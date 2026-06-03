@@ -7,7 +7,9 @@
 [![License](https://img.shields.io/github/license/arumes31/taunewlety)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-linux%2Famd64%20%7C%20linux%2Farm64-blue?logo=linux)](https://github.com/arumes31/taunewlety/pkgs/container/taunewlety)
 
-TauNewlety is a high-performance Go application that transforms your Plex Media Server into an engaging, interactive experience. By combining **Tautulli** watch data with local **AI (Ollama)**, it generates beautiful, personalized daily newsletters for your users.
+**About:** TauNewlety is a high-performance Go application that transforms your Plex Media Server into an engaging, interactive experience. By combining **Tautulli** watch data with local **AI (Ollama)**, it generates beautiful, personalized daily newsletters for your users.
+
+**Tags:** `plex`, `tautulli`, `ollama`, `llm`, `newsletter`, `golang`, `docker`, `self-hosted`, `media-server`, `ai-recommendations`
 
 ---
 
@@ -66,32 +68,47 @@ graph TD
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Detailed Setup Guide
 
-### 1. Requirements
-- Docker & Docker Compose
-- A Tautulli instance linked to your Plex server
+### 1. Prerequisites
+- **Docker & Docker Compose**: Installed and running on your host.
+- **Tautulli**: Installed and linked to your Plex server.
+- **SMTP Server**: An account with a provider (Gmail, Mailgun, etc.) or a self-hosted instance to send emails.
 
-### 2. Configuration
-Create a `.env` file from the example:
+### 2. Prepare Environment
+Create a `.env` file in the project root:
 ```bash
 cp .env.example .env
 ```
-Edit `.env` and set your secure login credentials:
-```env
-APP_USER=admin
-APP_PASS=your_secure_password
-SESSION_SECRET=a_very_long_random_string
-```
+Set the following mandatory variables:
+- `APP_USER`: Your dashboard username.
+- `APP_PASS`: Your dashboard password.
+- `SESSION_SECRET`: A long random string (e.g., `openssl rand -base64 32`).
+- `PORT`: Dashboard port (defaults to `8080`).
 
-### 3. Launch
+### 3. Deploy with Docker Compose
+Run the stack in the background:
 ```bash
-docker-compose up -d
+docker-compose -f deployments/docker/docker-compose.yml up -d
 ```
-> **Note**: On the first run, the Ollama container will automatically pull the **Llama 3.2 (3B)** model (approx. 2GB). This may take a few minutes depending on your internet speed.
+This will start:
+1.  **TauNewlety**: The main application logic.
+2.  **Ollama**: The local AI engine (will automatically pull `llama3.2:3b` on first start).
 
-### 4. Setup
-Open `http://localhost:8080`, log in, and navigate to **Settings** to provide your Tautulli and SMTP details.
+### 4. Application Configuration
+1.  Access the dashboard at `http://YOUR_SERVER_IP:8080`.
+2.  Log in using the credentials set in `.env`.
+3.  Go to **Settings** and configure:
+    -   **Tautulli**: URL and API Key (found in Tautulli Settings > Web Interface).
+    -   **Plex**: URL and Token (used for resolving media metadata if needed).
+    -   **SMTP**: Server address, port, username, and password.
+    -   **AI**: Ensure the Ollama URL matches the service name in docker-compose (`http://ollama:11434`).
+
+### 5. Managing Subscribers
+Navigate to the **Subscribers** tab to add email addresses manually. Users can unsubscribe at any time via the link at the bottom of each newsletter.
+
+### 6. Automated Schedule
+The application includes a built-in scheduler. You can define the delivery frequency in the **Settings** dashboard (uses Standard Cron syntax).
 
 ---
 
@@ -117,7 +134,7 @@ Following Go best practices:
 ---
 
 ## 🤝 Contributing
-Contributions are welcome! Please check the `v2_test` branch for the latest work.
+Contributions are welcome! Please check the `v2_test` branch for the latest work. Ensure all new code includes unit tests (aiming for 100% coverage).
 
 ---
 
