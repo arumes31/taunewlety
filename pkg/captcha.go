@@ -21,10 +21,6 @@ func GenerateCaptcha() (Captcha, error) {
 		return Captcha{}, fmt.Errorf("failed to generate random number 2: %w", err)
 	}
 
-	if n1 == nil || n2 == nil {
-		return Captcha{}, fmt.Errorf("generated random number is nil")
-	}
-
 	a := int(n1.Int64()) + 1
 	b := int(n2.Int64()) + 1
 	return Captcha{

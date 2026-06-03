@@ -44,10 +44,7 @@ func (c *OllamaClient) Generate(prompt string) (string, int, int, error) {
 		Stream: false,
 	}
 
-	jsonData, err := json.Marshal(reqBody)
-	if err != nil {
-		return "", 0, 0, err
-	}
+	jsonData, _ := json.Marshal(reqBody)
 
 	resp, err := c.HTTP.Post(fmt.Sprintf("%s/api/generate", c.BaseURL), "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {

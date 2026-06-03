@@ -4,18 +4,48 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
 )
 
+var (
+	getwd    = os.Getwd
+	logFatal = log.Fatal
+)
+
+// resolveWebDir locates the "web" asset directory so the server works
+// regardless of the current working directory (project root in production,
+// the package directory under `go test`). It walks up from the working
+// directory looking for a "web/template" directory, falling back to "web".
+func resolveWebDir() string {
+	dir, err := getwd()
+	if err != nil {
+		return "web"
+	}
+	for i := 0; i < 8; i++ {
+		candidate := filepath.Join(dir, "web")
+		if info, err := os.Stat(filepath.Join(candidate, "template")); err == nil && info.IsDir() {
+			return candidate
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return "web"
+}
+
 func SetupRouter() *gin.Engine {
 	r := gin.Default()
 
 	sessionSecret := os.Getenv("SESSION_SECRET")
 	if sessionSecret == "" {
-		log.Fatal("SESSION_SECRET environment variable is required but was not set")
+		logFatal("SESSION_SECRET environment variable is required but was not set")
+		return nil
 	}
 	store := cookie.NewStore([]byte(sessionSecret))
 	
@@ -28,11 +58,13 @@ func SetupRouter() *gin.Engine {
 
 	r.Use(sessions.Sessions("mysession", store))
 
-	r.Static("/static", "web/static")
-	r.StaticFile("/favicon.ico", "web/static/favicon.svg")
-	r.StaticFile("/favicon.svg", "web/static/favicon.svg")
+	webDir := resolveWebDir()
+	staticDir := filepath.Join(webDir, "static")
+	r.Static("/static", staticDir)
+	r.StaticFile("/favicon.ico", filepath.Join(staticDir, "favicon.svg"))
+	r.StaticFile("/favicon.svg", filepath.Join(staticDir, "favicon.svg"))
 
-	r.LoadHTMLGlob("web/template/*")
+	r.LoadHTMLGlob(filepath.Join(webDir, "template", "*"))
 
 	RegisterHandlers(r)
 

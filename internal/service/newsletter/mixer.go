@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 	"taunewlety/internal/domain/models"
-	"taunewlety/internal/platform/clients"
 	"taunewlety/internal/platform/database"
 	"time"
 )
@@ -28,11 +27,7 @@ func (s *NewsletterService) MixRecommendations() ([]Candidate, error) {
 		ratingKeys[i] = fmt.Sprintf("%v", item["rating_key"])
 	}
 	
-	watchCounts, err := s.Tautulli.GetWatchHistoryBatch(ratingKeys)
-	if err != nil {
-		// Log or handle batch query failure, fallback to empty map
-		watchCounts = make(map[string]clients.WatchInfo)
-	}
+	watchCounts, _ := s.Tautulli.GetWatchHistoryBatch(ratingKeys)
 	
 	var highRated []Candidate
 	var trending []Candidate

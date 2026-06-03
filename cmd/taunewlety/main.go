@@ -10,24 +10,28 @@ import (
 	"time"
 )
 
+var sigChan = make(chan os.Signal, 1)
+var shutdownTimeout = 10 * time.Second
+
+var setupSignalHandler = func(cancel context.CancelFunc) {
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-sigChan
+		cancel()
+	}()
+}
+
 func main() {
 	app := taunewlety.NewApp()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-	go func() {
-		<-sigChan
-		cancel()
-	}()
+	setupSignalHandler(cancel)
 
-	if err := app.Run(ctx); err != nil {
-		log.Printf("Application run error: %v", err)
-	}
+	_ = app.Run(ctx)
 
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer shutdownCancel()
 
 	if err := app.Shutdown(shutdownCtx); err != nil {

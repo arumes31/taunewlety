@@ -153,15 +153,8 @@ func (c *TautulliClient) GetWatchHistory(ratingKey string) (int, error) {
 		return 0, nil
 	}
 
-	var records float64
-	switch v := recordsVal.(type) {
-	case float64:
-		records = v
-	case int:
-		records = float64(v)
-	case int64:
-		records = float64(v)
-	default:
+	records, ok := recordsVal.(float64)
+	if !ok {
 		return 0, fmt.Errorf("recordsFiltered is not a numeric type")
 	}
 

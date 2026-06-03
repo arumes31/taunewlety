@@ -8,26 +8,35 @@ import (
 	"gorm.io/gorm"
 )
 
-var DB *gorm.DB
+var (
+	DB     *gorm.DB
+	OpenDB = func(dbPath string) (*gorm.DB, error) {
+		return gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
+	}
+	logFatalf = log.Fatalf
+	logPrintf = log.Printf
+)
 
 func InitDB(dbPath string) {
 	var err error
-	DB, err = gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
+	DB, err = OpenDB(dbPath)
 	if err != nil {
-		log.Fatalf("failed to connect database: %v", err)
+		logFatalf("failed to connect database: %v", err)
+		return
 	}
 
 	// Auto-migrate the schema
 	err = DB.AutoMigrate(&models.Config{}, &models.Blacklist{}, &models.Subscriber{}, &models.RecommendationStat{}, &models.TokenUsage{})
 	if err != nil {
-		log.Fatalf("failed to migrate database: %v", err)
+		logFatalf("failed to migrate database: %v", err)
+		return
 	}
 
 	// Seed default config if empty
 	var count int64
 	result := DB.Model(&models.Config{}).Count(&count)
 	if result.Error != nil {
-		log.Printf("failed to count configurations: %v", result.Error)
+		logPrintf("failed to count configurations: %v", result.Error)
 	} else if count == 0 {
 		defaultConfig := models.Config{
 			OllamaURL:   "http://ollama:11434",
@@ -37,9 +46,9 @@ func InitDB(dbPath string) {
 		}
 		res := DB.Create(&defaultConfig)
 		if res.Error != nil {
-			log.Printf("failed to seed default configuration: %v", res.Error)
+			logPrintf("failed to seed default configuration: %v", res.Error)
 		} else if res.RowsAffected == 0 {
-			log.Printf("default configuration not seeded (rows affected = 0)")
+			logPrintf("default configuration not seeded (rows affected = 0)")
 		}
 	}
 }

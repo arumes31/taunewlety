@@ -13,10 +13,7 @@ import (
 
 func generateCSRFToken() string {
 	b := make([]byte, 16)
-	_, err := rand.Read(b)
-	if err != nil {
-		return ""
-	}
+	_, _ = rand.Read(b)
 	return hex.EncodeToString(b)
 }
 

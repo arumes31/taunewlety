@@ -57,7 +57,9 @@ func (h *Handler) SubscriberDelete(c *gin.Context) {
 		return
 	}
 
-	res := database.DB.Delete(&models.Subscriber{}, id)
+	// Hard-delete so the unique email index is freed and the address can be
+	// added again later (a soft delete would block re-adding the same email).
+	res := database.DB.Unscoped().Delete(&models.Subscriber{}, id)
 	if res.Error != nil {
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete subscriber: " + res.Error.Error()})
 		return

@@ -33,8 +33,10 @@ func (s *NewsletterService) SendEmail(to string, subject string, body string) er
 		body + "\r\n")
 
 	addr := fmt.Sprintf("%s:%d", s.Config.SMTPHost, s.Config.SMTPPort)
-	return smtp.SendMail(addr, auth, s.Config.SMTPSender, []string{toSanitized}, msg)
+	return smtpSendMail(addr, auth, s.Config.SMTPSender, []string{toSanitized}, msg)
 }
+
+var smtpSendMail = smtp.SendMail
 
 // SendNotifications can be expanded to Discord/Telegram in the future
 func (s *NewsletterService) SendNotifications(subject string, body string) error {

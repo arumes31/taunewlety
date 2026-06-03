@@ -11,9 +11,20 @@ import (
 
 var ErrNoRecommendations = errors.New("no recommendations available")
 
+type TautulliClient interface {
+	GetRecentlyAdded(count int) ([]map[string]interface{}, error)
+	GetTopGenres(count int) ([]string, error)
+	GetWatchHistoryBatch(ratingKeys []string) (map[string]clients.WatchInfo, error)
+	GetTopWatched(count int) ([]map[string]interface{}, error)
+}
+
+type OllamaClient interface {
+	Generate(prompt string) (string, int, int, error)
+}
+
 type NewsletterService struct {
-	Tautulli *clients.TautulliClient
-	Ollama   *clients.OllamaClient
+	Tautulli TautulliClient
+	Ollama   OllamaClient
 	Config   *models.Config
 }
 

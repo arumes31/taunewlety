@@ -39,7 +39,8 @@ func (h *Handler) UnsubscribePost(c *gin.Context) {
 	// Verify CSRF
 	csrfInput := c.PostForm("csrf_token")
 	csrfSession := session.Get("csrf_token_unsub")
-	if csrfSession == nil || csrfInput == "" || csrfInput != csrfSession.(string) {
+	csrfSessionStr, ok := csrfSession.(string)
+	if !ok || csrfInput == "" || csrfInput != csrfSessionStr {
 		c.String(http.StatusForbidden, "Invalid CSRF token")
 		return
 	}
@@ -84,7 +85,10 @@ func (h *Handler) UnsubscribePost(c *gin.Context) {
 	session.Delete("csrf_token_unsub")
 	_ = session.Save()
 
-	res := database.DB.Where("email = ?", email).Delete(&models.Subscriber{})
+	// Hard-delete so the unique email index is freed and the user can
+	// re-subscribe later (a soft delete would leave the row in place and
+	// cause a UNIQUE constraint failure on re-subscription).
+	res := database.DB.Unscoped().Where("email = ?", email).Delete(&models.Subscriber{})
 	if res.Error != nil {
 		c.String(http.StatusInternalServerError, "Failed to unsubscribe: "+res.Error.Error())
 		return
