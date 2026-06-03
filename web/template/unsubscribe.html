@@ -22,9 +22,10 @@
         <h1>Unsubscribe</h1>
         <p>Please confirm you want to unsubscribe <strong>{{.email}}</strong>.</p>
         <form action="/unsubscribe" method="POST">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
             <input type="hidden" name="email" value="{{.email}}">
             <div class="form-group">
-                <label>Security Check: What is {{.question}}?</label>
+                <label>Security Check:</label>
                 <div class="captcha-question">{{.question}} = ?</div>
                 <input type="number" name="answer" placeholder="Your answer" required autofocus>
             </div>

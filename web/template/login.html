@@ -24,6 +24,7 @@
         </div>
         {{if .error}}<div class="error">{{.error}}</div>{{end}}
         <form action="/login" method="POST">
+            <input type="hidden" name="csrf_token" value="{{.csrfToken}}">
             <div class="form-group">
                 <label for="username">Username</label>
                 <input type="text" id="username" name="username" required>

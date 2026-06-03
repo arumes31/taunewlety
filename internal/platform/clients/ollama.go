@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 )
@@ -53,6 +54,11 @@ func (c *OllamaClient) Generate(prompt string) (string, int, int, error) {
 		return "", 0, 0, err
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return "", 0, 0, fmt.Errorf("ollama API returned status %d: %s", resp.StatusCode, string(bodyBytes))
+	}
 
 	var ollamaResp OllamaResponse
 	if err := json.NewDecoder(resp.Body).Decode(&ollamaResp); err != nil {

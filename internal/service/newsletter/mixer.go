@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"taunewlety/internal/domain/models"
+	"taunewlety/internal/platform/clients"
 	"taunewlety/internal/platform/database"
 	"time"
 )
@@ -21,6 +22,18 @@ func (s *NewsletterService) MixRecommendations() ([]Candidate, error) {
 
 	topGenres, _ := s.Tautulli.GetTopGenres(5)
 	
+	// Collect rating keys to batch query watch history
+	ratingKeys := make([]string, len(candidates))
+	for i, item := range candidates {
+		ratingKeys[i] = fmt.Sprintf("%v", item["rating_key"])
+	}
+	
+	watchCounts, err := s.Tautulli.GetWatchHistoryBatch(ratingKeys)
+	if err != nil {
+		// Log or handle batch query failure, fallback to empty map
+		watchCounts = make(map[string]clients.WatchInfo)
+	}
+	
 	var highRated []Candidate
 	var trending []Candidate
 	var genreMatch []Candidate
@@ -35,20 +48,28 @@ func (s *NewsletterService) MixRecommendations() ([]Candidate, error) {
 			continue
 		}
 
-		tags := []string{}
+		var allTags []string
 		
 		ratingStr := fmt.Sprintf("%v", item["rating"])
 		var rating float64
 		_, _ = fmt.Sscanf(ratingStr, "%f", &rating)
 		if rating >= 8.0 {
-			tags = append(tags, "Critically Acclaimed")
-			highRated = append(highRated, Candidate{item, tags})
+			allTags = append(allTags, "Critically Acclaimed")
+			tagsCopy := make([]string, len(allTags))
+			copy(tagsCopy, allTags)
+			highRated = append(highRated, Candidate{item, tagsCopy})
 		}
 
-		watchCount, _ := s.Tautulli.GetWatchHistory(ratingKey)
+		watchInfo, ok := watchCounts[ratingKey]
+		watchCount := 0
+		if ok {
+			watchCount = watchInfo.WatchCount
+		}
 		if watchCount > 2 {
-			tags = append(tags, "Trending on Server")
-			trending = append(trending, Candidate{item, tags})
+			allTags = append(allTags, "Trending on Server")
+			tagsCopy := make([]string, len(allTags))
+			copy(tagsCopy, allTags)
+			trending = append(trending, Candidate{item, tagsCopy})
 		}
 
 		genresStr := fmt.Sprintf("%v", item["genres"])
@@ -60,13 +81,17 @@ func (s *NewsletterService) MixRecommendations() ([]Candidate, error) {
 			}
 		}
 		if isGenreMatch {
-			tags = append(tags, "Based on your library tastes")
-			genreMatch = append(genreMatch, Candidate{item, tags})
+			allTags = append(allTags, "Based on your library tastes")
+			tagsCopy := make([]string, len(allTags))
+			copy(tagsCopy, allTags)
+			genreMatch = append(genreMatch, Candidate{item, tagsCopy})
 		}
 
-		if len(tags) == 0 {
-			tags = append(tags, "Freshly Added")
-			fresh = append(fresh, Candidate{item, tags})
+		if len(allTags) == 0 {
+			allTags = append(allTags, "Freshly Added")
+			tagsCopy := make([]string, len(allTags))
+			copy(tagsCopy, allTags)
+			fresh = append(fresh, Candidate{item, tagsCopy})
 		}
 	}
 

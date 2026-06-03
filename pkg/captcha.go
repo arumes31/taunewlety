@@ -11,13 +11,24 @@ type Captcha struct {
 	Answer   int
 }
 
-func GenerateCaptcha() Captcha {
-	n1, _ := rand.Int(rand.Reader, big.NewInt(10))
-	n2, _ := rand.Int(rand.Reader, big.NewInt(10))
+func GenerateCaptcha() (Captcha, error) {
+	n1, err := rand.Int(rand.Reader, big.NewInt(10))
+	if err != nil {
+		return Captcha{}, fmt.Errorf("failed to generate random number 1: %w", err)
+	}
+	n2, err := rand.Int(rand.Reader, big.NewInt(10))
+	if err != nil {
+		return Captcha{}, fmt.Errorf("failed to generate random number 2: %w", err)
+	}
+
+	if n1 == nil || n2 == nil {
+		return Captcha{}, fmt.Errorf("generated random number is nil")
+	}
+
 	a := int(n1.Int64()) + 1
 	b := int(n2.Int64()) + 1
 	return Captcha{
 		Question: fmt.Sprintf("%d + %d", a, b),
 		Answer:   a + b,
-	}
+	}, nil
 }

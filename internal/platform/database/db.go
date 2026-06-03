@@ -25,15 +25,22 @@ func InitDB(dbPath string) {
 
 	// Seed default config if empty
 	var count int64
-	DB.Model(&models.Config{}).Count(&count)
-	if count == 0 {
+	result := DB.Model(&models.Config{}).Count(&count)
+	if result.Error != nil {
+		log.Printf("failed to count configurations: %v", result.Error)
+	} else if count == 0 {
 		defaultConfig := models.Config{
 			OllamaURL:   "http://ollama:11434",
 			OllamaModel: "llama3.2:3b",
 			Language:    "en_US",
 			RecCount:    10,
 		}
-		DB.Create(&defaultConfig)
+		res := DB.Create(&defaultConfig)
+		if res.Error != nil {
+			log.Printf("failed to seed default configuration: %v", res.Error)
+		} else if res.RowsAffected == 0 {
+			log.Printf("default configuration not seeded (rows affected = 0)")
+		}
 	}
 }
 
@@ -48,7 +55,10 @@ func GetConfig() (*models.Config, error) {
 
 func SaveConfig(config *models.Config) error {
 	var count int64
-	DB.Model(&models.Config{}).Count(&count)
+	r := DB.Model(&models.Config{}).Count(&count)
+	if r.Error != nil {
+		return r.Error
+	}
 	if count == 0 {
 		return DB.Create(config).Error
 	}

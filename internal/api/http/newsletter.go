@@ -24,7 +24,11 @@ func (h *Handler) NewsletterPreview(c *gin.Context) {
 }
 
 func (h *Handler) NewsletterSendManual(c *gin.Context) {
-	config, _ := database.GetConfig()
+	config, err := database.GetConfig()
+	if err != nil || config == nil {
+		c.String(http.StatusBadRequest, "Configure settings first")
+		return
+	}
 	svc := newsletter.NewNewsletterService(config)
 	subject, body, err := svc.GenerateNewsletter()
 	if err != nil {
