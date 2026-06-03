@@ -1,0 +1,17 @@
+.git
+.github
+.env
+*.db
+*.db-journal
+test_build
+data/
+ollama_data/
+node_modules/
+dist/
+Dockerfile
+docker-compose.yml
+README.md
+LICENSE
+.gitignore
+.dockerignore
+.gitattributes
