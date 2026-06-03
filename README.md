@@ -1,4 +1,4 @@
-# 🎬 TauNewlety v2.0
+# 🎬 TauNewlety v0.1
 > **The Ultimate AI-Powered Plex Media Server Companion**
 
 [![Go Version](https://img.shields.io/github/go-mod/go-version/arumes31/taunewlety?color=00ADD8&logo=go)](https://go.dev/)
