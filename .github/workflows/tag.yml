@@ -15,6 +15,9 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Fix safe.directory
+        run: git config --global --add safe.directory /mnt/c/DR/Nextcloud/BUILD/taunewlety
+
       - name: Bump version and push tag
         id: tag_version
         uses: anothrNick/github-tag-action@1.64.0
