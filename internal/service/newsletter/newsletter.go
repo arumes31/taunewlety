@@ -1,4 +1,4 @@
-package logic
+package newsletter
 
 import (
 	"encoding/json"
@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"net/smtp"
 	"strings"
-	"taunewlety/internal/clients"
-	"taunewlety/internal/db"
-	"taunewlety/internal/models"
+	"taunewlety/internal/domain/models"
+	"taunewlety/internal/platform/clients"
+	"taunewlety/internal/platform/database"
 	"time"
 )
 
@@ -52,7 +52,7 @@ func (s *NewsletterService) GenerateNewsletter() (string, string, error) {
 		
 		// Skip blacklisted
 		var bl models.Blacklist
-		result := db.DB.Where("media_id = ? AND expires_at > ?", ratingKey, time.Now().Unix()).First(&bl)
+		result := database.DB.Where("media_id = ? AND expires_at > ?", ratingKey, time.Now().Unix()).First(&bl)
 		if result.Error == nil {
 			continue
 		}
@@ -62,7 +62,7 @@ func (s *NewsletterService) GenerateNewsletter() (string, string, error) {
 		// Check Rating
 		ratingStr := fmt.Sprintf("%v", item["rating"])
 		var rating float64
-		fmt.Sscanf(ratingStr, "%f", &rating)
+		_, _ = fmt.Sscanf(ratingStr, "%f", &rating)
 		if rating >= 8.0 {
 			tags = append(tags, "Critically Acclaimed")
 			highRated = append(highRated, Candidate{item, tags})
@@ -103,7 +103,6 @@ func (s *NewsletterService) GenerateNewsletter() (string, string, error) {
 	appendLimited := func(list []Candidate, n int) {
 		count := 0
 		for _, c := range list {
-			// Check if already in finalSelection
 			alreadySelected := false
 			for _, s := range finalSelection {
 				if s.Item["rating_key"] == c.Item["rating_key"] {
@@ -126,10 +125,9 @@ func (s *NewsletterService) GenerateNewsletter() (string, string, error) {
 	appendLimited(genreMatch, limit)
 	appendLimited(fresh, limit)
 
-	// Add "Surprise Me" (Stage 4 Fallback / Random)
+	// Add "Surprise Me"
 	top, _ := s.Tautulli.GetTopWatched(20)
 	if len(top) > 0 {
-		// Pick one truly random from top watched or recently added pool
 		randItem := top[time.Now().Unix()%int64(len(top))]
 		finalSelection = append(finalSelection, Candidate{randItem, []string{"Surprise Me!"}})
 	}
@@ -156,7 +154,6 @@ func (s *NewsletterService) GenerateNewsletter() (string, string, error) {
 		}
 
 		tag := strings.Join(c.Tags, ", ")
-		
 		itemsList = append(itemsList, fmt.Sprintf("- %s (%s) | Genre: %s | Rating: %s | Recommended because: %s", title, year, genres, rating, tag))
 	}
 
@@ -174,9 +171,6 @@ Format the output as a JSON object with two fields:
 1. "subject": A catchy, short subject line for the email.
 2. "body": The HTML content of the newsletter. Use a modern, clean style with sections for Movies and Series.
 
-IMPORTANT: You MUST include a prominent header at the top of the newsletter body with the logo:
-<div style="text-align: center; margin-bottom: 2rem;"><img src="{{.LogoURL}}" alt="TauNewlety Logo" style="width: 220px; height: auto;"></div>
-
 IMPORTANT: You MUST include a small, discreet footer at the bottom of the "body" with a link to unsubscribe. 
 The link should look like this: <a href="{{.UnsubscribeURL}}">Unsubscribe</a>.
 
@@ -192,8 +186,8 @@ Items:
 		return "", "", err
 	}
 
-	// Log Token Usage (71)
-	db.DB.Create(&models.TokenUsage{
+	// Log Token Usage
+	database.DB.Create(&models.TokenUsage{
 		PromptTokens:     promptTokens,
 		CompletionTokens: completionTokens,
 		TotalTokens:      promptTokens + completionTokens,
@@ -201,8 +195,17 @@ Items:
 	})
 
 	// Simple JSON extraction
-	resp = strings.TrimPrefix(resp, "```json")
-	resp = strings.TrimSuffix(resp, "```")
+	if strings.Contains(resp, "```json") {
+		parts := strings.Split(resp, "```json")
+		if len(parts) > 1 {
+			resp = strings.Split(parts[1], "```")[0]
+		}
+	} else if strings.Contains(resp, "```") {
+		parts := strings.Split(resp, "```")
+		if len(parts) > 1 {
+			resp = parts[1]
+		}
+	}
 	resp = strings.TrimSpace(resp)
 
 	var result struct {
@@ -213,19 +216,19 @@ Items:
 		return "Your Daily Plex Update", resp, nil
 	}
 
-	// 4. Blacklist selected items and track stats (161)
+	// 4. Blacklist selected items and track stats
 	for _, c := range finalSelection {
 		ratingKey := fmt.Sprintf("%v", c.Item["rating_key"])
 		mediaType := fmt.Sprintf("%v", c.Item["media_type"])
 		title := fmt.Sprintf("%v", c.Item["title"])
 		
-		db.DB.Create(&models.Blacklist{
+		database.DB.Create(&models.Blacklist{
 			MediaID:   ratingKey,
 			MediaType: mediaType,
 			ExpiresAt: time.Now().AddDate(0, 0, 7).Unix(),
 		})
 
-		db.DB.Create(&models.RecommendationStat{
+		database.DB.Create(&models.RecommendationStat{
 			MediaID: ratingKey,
 			Title:   title,
 			SentAt:  time.Now().Unix(),
@@ -236,12 +239,8 @@ Items:
 }
 
 func (s *NewsletterService) SendEmail(to string, subject string, body string) error {
-	// Replace unsubscribe placeholder
 	unsubURL := fmt.Sprintf("%s/unsubscribe?email=%s", s.Config.AppBaseURL, to)
 	body = strings.ReplaceAll(body, "{{.UnsubscribeURL}}", unsubURL)
-
-	logoURL := fmt.Sprintf("%s/static/logo.svg", s.Config.AppBaseURL)
-	body = strings.ReplaceAll(body, "{{.LogoURL}}", logoURL)
 
 	auth := smtp.PlainAuth("", s.Config.SMTPUser, s.Config.SMTPPass, s.Config.SMTPHost)
 	msg := []byte("To: " + to + "\r\n" +

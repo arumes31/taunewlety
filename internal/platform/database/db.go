@@ -1,8 +1,8 @@
-package db
+package database
 
 import (
 	"log"
-	"taunewlety/internal/models"
+	"taunewlety/internal/domain/models"
 
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"

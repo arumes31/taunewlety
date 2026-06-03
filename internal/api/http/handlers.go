@@ -1,12 +1,12 @@
-package api
+package http
 
 import (
 	"net/http"
 	"os"
 	"strconv"
-	"taunewlety/internal/db"
-	"taunewlety/internal/logic"
-	"taunewlety/internal/models"
+	"taunewlety/internal/domain/models"
+	"taunewlety/internal/platform/database"
+	"taunewlety/internal/service/newsletter"
 	"taunewlety/pkg"
 
 	"github.com/gin-contrib/sessions"
@@ -25,7 +25,7 @@ func RegisterHandlers(r *gin.Engine) {
 		
 		session := sessions.Default(c)
 		session.Set("captcha_answer", captcha.Answer)
-		session.Save()
+		_ = session.Save()
 
 		c.HTML(http.StatusOK, "unsubscribe.html", gin.H{
 			"email":    email,
@@ -42,7 +42,7 @@ func RegisterHandlers(r *gin.Engine) {
 		correctAnswer := session.Get("captcha_answer")
 
 		if correctAnswer != nil && answer == correctAnswer.(int) {
-			db.DB.Where("email = ?", email).Delete(&models.Subscriber{})
+			database.DB.Where("email = ?", email).Delete(&models.Subscriber{})
 			c.String(http.StatusOK, "You have been successfully unsubscribed.")
 		} else {
 			c.String(http.StatusUnauthorized, "Invalid captcha answer. Please try again.")
@@ -56,7 +56,7 @@ func RegisterHandlers(r *gin.Engine) {
 		if user == os.Getenv("APP_USER") && pass == os.Getenv("APP_PASS") {
 			session := sessions.Default(c)
 			session.Set("user", user)
-			session.Save()
+			_ = session.Save()
 			c.Redirect(http.StatusFound, "/")
 		} else {
 			c.HTML(http.StatusUnauthorized, "login.html", gin.H{"error": "Invalid credentials"})
@@ -67,13 +67,13 @@ func RegisterHandlers(r *gin.Engine) {
 	authorized.Use(AuthRequired())
 	{
 		authorized.GET("/", func(c *gin.Context) {
-			config, _ := db.GetConfig()
+			config, _ := database.GetConfig()
 			var subscribers []models.Subscriber
-			db.DB.Find(&subscribers)
+			database.DB.Find(&subscribers)
 			var totalTokens int64
-			db.DB.Model(&models.TokenUsage{}).Select("sum(total_tokens)").Row().Scan(&totalTokens)
+			database.DB.Model(&models.TokenUsage{}).Select("sum(total_tokens)").Row().Scan(&totalTokens)
 			c.HTML(http.StatusOK, "index.html", gin.H{
-				"config": config, 
+				"config":      config,
 				"subscribers": subscribers,
 				"totalTokens": totalTokens,
 			})
@@ -82,14 +82,14 @@ func RegisterHandlers(r *gin.Engine) {
 		authorized.POST("/subscribers", func(c *gin.Context) {
 			email := c.PostForm("email")
 			if email != "" {
-				db.DB.Create(&models.Subscriber{Email: email})
+				database.DB.Create(&models.Subscriber{Email: email})
 			}
 			c.Redirect(http.StatusFound, "/")
 		})
 
 		authorized.POST("/subscribers/delete", func(c *gin.Context) {
 			id := c.PostForm("id")
-			db.DB.Delete(&models.Subscriber{}, id)
+			database.DB.Delete(&models.Subscriber{}, id)
 			c.Redirect(http.StatusFound, "/")
 		})
 
@@ -99,17 +99,17 @@ func RegisterHandlers(r *gin.Engine) {
 				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 				return
 			}
-			db.SaveConfig(&config)
+			_ = database.SaveConfig(&config)
 			c.Redirect(http.StatusFound, "/")
 		})
 
 		authorized.GET("/preview", func(c *gin.Context) {
-			config, _ := db.GetConfig()
+			config, _ := database.GetConfig()
 			if config == nil {
 				c.String(http.StatusBadRequest, "Configure settings first")
 				return
 			}
-			svc := logic.NewNewsletterService(config)
+			svc := newsletter.NewNewsletterService(config)
 			subject, body, err := svc.GenerateNewsletter()
 			if err != nil {
 				c.String(http.StatusInternalServerError, err.Error())
@@ -119,11 +119,11 @@ func RegisterHandlers(r *gin.Engine) {
 		})
 
 		authorized.POST("/send", func(c *gin.Context) {
-			config, _ := db.GetConfig()
-			svc := logic.NewNewsletterService(config)
+			config, _ := database.GetConfig()
+			svc := newsletter.NewNewsletterService(config)
 			subject, body, err := svc.GenerateNewsletter()
 			if err != nil {
-				if err == logic.ErrNoRecommendations {
+				if err == newsletter.ErrNoRecommendations {
 					c.JSON(http.StatusOK, gin.H{"status": "Skipped", "message": "No recommendations found"})
 				} else {
 					c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})

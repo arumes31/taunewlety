@@ -6,10 +6,10 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"taunewlety/internal/api"
-	"taunewlety/internal/db"
-	"taunewlety/internal/logic"
-	"taunewlety/internal/models"
+	api_http "taunewlety/internal/api/http"
+	"taunewlety/internal/domain/models"
+	"taunewlety/internal/platform/database"
+	"taunewlety/internal/service/newsletter"
 	"time"
 
 	"github.com/gin-contrib/sessions"
@@ -30,7 +30,7 @@ func main() {
 	if dbPath == "" {
 		dbPath = "taunewlety.db"
 	}
-	db.InitDB(dbPath)
+	database.InitDB(dbPath)
 
 	r := gin.Default()
 	sessionSecret := os.Getenv("SESSION_SECRET")
@@ -43,23 +43,23 @@ func main() {
 	r.Static("/static", "web/static")
 	r.StaticFile("/favicon.ico", "web/static/favicon.svg")
 
-	r.LoadHTMLGlob("web/templates/*")
-	api.RegisterHandlers(r)
+	r.LoadHTMLGlob("web/template/*")
+	api_http.RegisterHandlers(r)
 
 	c := cron.New()
 	_, err := c.AddFunc("0 9 * * *", func() {
-		config, _ := db.GetConfig()
+		config, _ := database.GetConfig()
 		if config != nil {
-			svc := logic.NewNewsletterService(config)
+			svc := newsletter.NewNewsletterService(config)
 			subject, body, err := svc.GenerateNewsletter()
 			if err != nil {
 				logger.Error("Generation failed", zap.Error(err))
 				return
 			}
-			
+
 			// Send to all active subscribers
 			var subs []models.Subscriber
-			db.DB.Where("active = ?", true).Find(&subs)
+			database.DB.Where("active = ?", true).Find(&subs)
 			for _, sub := range subs {
 				_ = svc.SendEmail(sub.Email, subject, body)
 			}
