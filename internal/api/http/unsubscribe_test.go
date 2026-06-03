@@ -148,8 +148,14 @@ func TestUnsubscribeHandlers(t *testing.T) {
 	bodyStr2 := wGet2.Body.String()
 
 	matchesCSRF2 := reCSRF.FindStringSubmatch(bodyStr2)
+	if len(matchesCSRF2) < 2 {
+		t.Fatal("could not find CSRF token in second unsubscribe form")
+	}
 	csrfToken2 := matchesCSRF2[1]
 	matchesCaptcha2 := reCaptcha.FindStringSubmatch(bodyStr2)
+	if len(matchesCaptcha2) < 2 {
+		t.Fatal("could not find captcha question in second unsubscribe form")
+	}
 	questionStr2 := strings.ReplaceAll(matchesCaptcha2[1], "&#43;", "+")
 	_, _ = fmt.Sscanf(questionStr2, "%d + %d", &a, &b)
 	correctAnswer2 := a + b
@@ -201,6 +207,7 @@ func TestUnsubscribePost_MissingCaptchaInSession(t *testing.T) {
 	r.POST("/unsubscribe", func(c *gin.Context) {
 		session := sessions.Default(c)
 		session.Set("csrf_token_unsub", "valid-csrf")
+		session.Set("unsubscribe_email", "test@example.com")
 		_ = session.Save()
 		c.Next()
 	}, h.UnsubscribePost)
@@ -236,6 +243,7 @@ func TestUnsubscribePost_CaptchaStringAndDBError(t *testing.T) {
 	r.POST("/unsubscribe", func(c *gin.Context) {
 		session := sessions.Default(c)
 		session.Set("csrf_token_unsub", "valid-csrf")
+		session.Set("unsubscribe_email", "test@example.com")
 		if c.Query("type") == "float" {
 			session.Set("captcha_answer", float64(15.0))
 		} else {
@@ -328,6 +336,7 @@ func TestUnsubscribePost_EdgeCases(t *testing.T) {
 			name: "Unsupported Captcha Answer Type",
 			setupSession: func(s sessions.Session) {
 				s.Set("csrf_token_unsub", "valid-csrf")
+				s.Set("unsubscribe_email", "test@example.com")
 				s.Set("captcha_answer", true) // bool not supported
 			},
 			csrfInput:      "valid-csrf",
@@ -339,6 +348,7 @@ func TestUnsubscribePost_EdgeCases(t *testing.T) {
 			name: "Non-numeric Captcha Answer String in Session",
 			setupSession: func(s sessions.Session) {
 				s.Set("csrf_token_unsub", "valid-csrf")
+				s.Set("unsubscribe_email", "test@example.com")
 				s.Set("captcha_answer", "abc") // invalid numeric string
 			},
 			csrfInput:      "valid-csrf",

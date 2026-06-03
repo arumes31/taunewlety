@@ -28,13 +28,17 @@ type EditableConfigDTO struct {
 }
 
 func (h *Handler) DashboardGet(c *gin.Context) {
-	config, _ := database.GetConfig()
+	config, err := database.GetConfig()
+	if err != nil || config == nil {
+		log.Printf("Error loading config: %v", err)
+		config = &models.Config{}
+	}
 	var subscribers []models.Subscriber
 	database.DB.Find(&subscribers)
-	
+
 	var totalTokens int64
 	var nullTokens sql.NullInt64
-	err := database.DB.Model(&models.TokenUsage{}).Select("COALESCE(sum(total_tokens), 0)").Row().Scan(&nullTokens)
+	err = database.DB.Model(&models.TokenUsage{}).Select("COALESCE(sum(total_tokens), 0)").Row().Scan(&nullTokens)
 	if err != nil {
 		log.Printf("Error scanning total tokens: %v", err)
 	}

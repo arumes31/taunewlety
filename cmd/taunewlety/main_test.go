@@ -2,15 +2,30 @@ package main
 
 import (
 	"context"
+	"errors"
 	"net"
 	"os"
+	"strconv"
 	"syscall"
 	"testing"
 	"time"
 )
 
+// freePort reserves an ephemeral port and releases it, returning the port
+// number as a string. This avoids flaky failures from hardcoded ports that
+// may already be in use on the test machine.
+func freePort(t *testing.T) string {
+	t.Helper()
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to reserve a free port: %v", err)
+	}
+	defer l.Close()
+	return strconv.Itoa(l.Addr().(*net.TCPAddr).Port)
+}
+
 func TestMainFunc(t *testing.T) {
-	os.Setenv("PORT", "9899")
+	os.Setenv("PORT", freePort(t))
 	os.Setenv("DB_PATH", ":memory:")
 	os.Setenv("SESSION_SECRET", "main-test-secret-9876")
 	defer func() {
@@ -73,7 +88,8 @@ func TestDefaultSetupSignalHandler(t *testing.T) {
 }
 
 func TestMainFunc_ShutdownError(t *testing.T) {
-	os.Setenv("PORT", "9897")
+	port := freePort(t)
+	os.Setenv("PORT", port)
 	os.Setenv("DB_PATH", ":memory:")
 	os.Setenv("SESSION_SECRET", "main-test-secret-9876")
 	defer func() {
@@ -86,6 +102,12 @@ func TestMainFunc_ShutdownError(t *testing.T) {
 	oldTimeout := shutdownTimeout
 	shutdownTimeout = 1 * time.Nanosecond
 	defer func() { shutdownTimeout = oldTimeout }()
+
+	// Capture the shutdown result so we can assert the timeout was hit.
+	shutdownErrChan := make(chan error, 1)
+	oldOnShutdown := onShutdown
+	onShutdown = func(err error) { shutdownErrChan <- err }
+	defer func() { onShutdown = oldOnShutdown }()
 
 	var triggerCancel context.CancelFunc
 	oldSetupSignalHandler := setupSignalHandler
@@ -105,7 +127,7 @@ func TestMainFunc_ShutdownError(t *testing.T) {
 	var connected bool
 	var activeConn net.Conn
 	for i := 0; i < 100; i++ {
-		conn, err := net.Dial("tcp", "127.0.0.1:9897")
+		conn, err := net.Dial("tcp", "127.0.0.1:"+port)
 		if err == nil {
 			activeConn = conn
 			connected = true
@@ -116,6 +138,8 @@ func TestMainFunc_ShutdownError(t *testing.T) {
 	if !connected {
 		t.Fatal("timed out waiting for server to start listening")
 	}
+	// Hold the connection open so the (1ns) shutdown context deadline is
+	// exceeded before the server can drain, forcing a shutdown error.
 	defer activeConn.Close()
 
 	if triggerCancel == nil {
@@ -129,5 +153,18 @@ func TestMainFunc_ShutdownError(t *testing.T) {
 		// success
 	case <-time.After(5 * time.Second):
 		t.Fatal("timed out waiting for main() to exit")
+	}
+
+	// The forced 1ns timeout with an open connection must surface as an error.
+	select {
+	case err := <-shutdownErrChan:
+		if err == nil {
+			t.Fatal("expected a non-nil shutdown error from the forced timeout, got nil")
+		}
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Errorf("expected context.DeadlineExceeded, got: %v", err)
+		}
+	default:
+		t.Fatal("expected onShutdown to be invoked with the shutdown result")
 	}
 }

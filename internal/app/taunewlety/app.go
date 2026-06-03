@@ -30,8 +30,11 @@ type App struct {
 
 func NewApp() *App {
 	_ = godotenv.Load()
-	logger, _ := zap.NewProduction()
-	
+	logger, err := zap.NewProduction()
+	if err != nil {
+		panic("failed to initialize logger: " + err.Error())
+	}
+
 	return &App{
 		logger: logger,
 		cron:   cron.New(),
@@ -79,7 +82,11 @@ func (a *App) Run(ctx context.Context) error {
 
 func (a *App) setupScheduler() {
 	_, err := a.cron.AddFunc(cronSchedule, func() {
-		config, _ := database.GetConfig()
+		config, err := database.GetConfig()
+		if err != nil {
+			a.logger.Error("Failed to load config for scheduled job", zap.Error(err))
+			return
+		}
 		if config != nil {
 			svc := newsletter.NewNewsletterService(config)
 			subject, body, err := svc.GenerateNewsletter()
@@ -91,7 +98,9 @@ func (a *App) setupScheduler() {
 			var subs []models.Subscriber
 			database.DB.Where("active = ?", true).Find(&subs)
 			for _, sub := range subs {
-				_ = svc.SendEmail(sub.Email, subject, body)
+				if err := svc.SendEmail(sub.Email, subject, body); err != nil {
+					a.logger.Error("Failed to send email", zap.String("email", sub.Email), zap.Error(err))
+				}
 			}
 		}
 	})
@@ -102,9 +111,14 @@ func (a *App) setupScheduler() {
 
 func (a *App) Shutdown(ctx context.Context) error {
 	a.logger.Info("Shutting down TauNewlety...")
-	
+
 	a.cron.Stop()
-	
+
+	if a.srv == nil {
+		a.logger.Info("Server was not started, skipping shutdown")
+		return nil
+	}
+
 	if err := a.srv.Shutdown(ctx); err != nil {
 		return err
 	}

@@ -2,6 +2,7 @@ package newsletter
 
 import (
 	"errors"
+	"strings"
 	"taunewlety/internal/domain/models"
 	"taunewlety/internal/platform/database"
 	"testing"
@@ -157,7 +158,7 @@ func TestNewsletterService_GenerateNewsletter(t *testing.T) {
 }
 
 func contains(s, substr string) bool {
-	return (s != "" && substr != "" && (s == substr || (len(s) >= len(substr) && (s[:len(substr)] == substr || s[len(s)-len(substr):] == substr)))) || (s != "" && substr == "") || (s == "" && substr == "")
+	return strings.Contains(s, substr)
 }
 
 // Re-using TestNewsletterService_SendEmail and TestNewsletterService_SendNotifications from notifier_test.go

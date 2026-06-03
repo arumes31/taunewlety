@@ -1,12 +1,14 @@
 package http
 
 import (
-	"github.com/gin-gonic/gin"
 	"net/http"
 	"net/mail"
 	"strconv"
+	"strings"
 	"taunewlety/internal/domain/models"
 	"taunewlety/internal/platform/database"
+
+	"github.com/gin-gonic/gin"
 )
 
 func (h *Handler) SubscriberAdd(c *gin.Context) {
@@ -37,7 +39,12 @@ func (h *Handler) SubscriberAdd(c *gin.Context) {
 
 	res := database.DB.Create(&models.Subscriber{Email: email})
 	if res.Error != nil {
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Failed to add subscriber: " + res.Error.Error()})
+		errMsg := res.Error.Error()
+		if strings.Contains(errMsg, "UNIQUE constraint") || strings.Contains(errMsg, "duplicate key") {
+			c.AbortWithStatusJSON(http.StatusConflict, gin.H{"error": "Subscriber with this email already exists"})
+		} else {
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Failed to add subscriber: " + errMsg})
+		}
 		return
 	}
 

@@ -46,14 +46,16 @@ func TestInitDB(t *testing.T) {
 	t.Run("Success_AlreadySeeded", func(t *testing.T) {
 		logFatalf = func(format string, v ...interface{}) { t.Errorf("logFatalf called unexpectedly: "+format, v...) }
 		logPrintf = func(format string, v ...interface{}) { t.Errorf("logPrintf called unexpectedly: "+format, v...) }
+
+		sharedDSN := "file::memory:?cache=shared"
 		OpenDB = func(dbPath string) (*gorm.DB, error) {
-			return gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
+			return gorm.Open(sqlite.Open(sharedDSN), &gorm.Config{})
 		}
 
 		// First call seeds
-		InitDB(":memory:")
-		// Second call skips seeding
-		InitDB(":memory:")
+		InitDB(sharedDSN)
+		// Second call skips seeding (same shared DB)
+		InitDB(sharedDSN)
 
 		var count int64
 		DB.Model(&models.Config{}).Count(&count)

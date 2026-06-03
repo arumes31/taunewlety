@@ -17,12 +17,17 @@ func (h *Handler) UnsubscribeGet(c *gin.Context) {
 		c.String(http.StatusInternalServerError, "Failed to generate captcha: %v", err)
 		return
 	}
-	
+
 	session := sessions.Default(c)
 	session.Set("captcha_answer", captcha.Answer)
-	
+	session.Set("unsubscribe_email", email)
+
 	// Generate CSRF token for unsubscribe
-	csrfToken := generateCSRFToken()
+	csrfToken, err := generateCSRFToken()
+	if err != nil {
+		c.String(http.StatusInternalServerError, "Failed to generate CSRF token: %v", err)
+		return
+	}
 	session.Set("csrf_token_unsub", csrfToken)
 	_ = session.Save()
 
@@ -45,7 +50,11 @@ func (h *Handler) UnsubscribePost(c *gin.Context) {
 		return
 	}
 
-	email := c.PostForm("email")
+	email, _ := session.Get("unsubscribe_email").(string)
+	if email == "" {
+		c.String(http.StatusBadRequest, "Email not found in session")
+		return
+	}
 	answerStr := c.PostForm("answer")
 	answer, err := strconv.Atoi(answerStr)
 	if err != nil {
@@ -80,9 +89,10 @@ func (h *Handler) UnsubscribePost(c *gin.Context) {
 		return
 	}
 
-	// Remove captcha and CSRF from session
+	// Remove captcha, CSRF, and email from session
 	session.Delete("captcha_answer")
 	session.Delete("csrf_token_unsub")
+	session.Delete("unsubscribe_email")
 	_ = session.Save()
 
 	// Hard-delete so the unique email index is freed and the user can

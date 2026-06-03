@@ -307,8 +307,16 @@ func TestNewsletterHandlers(t *testing.T) {
 						config.SMTPHost = addr.IP.String()
 						config.SMTPPort = addr.Port
 					} else {
-						config.SMTPHost = "localhost"
-						config.SMTPPort = 9999 // Connection refused
+						// Obtain a free port then close it so the connection is
+						// refused deterministically (avoids a flaky hardcoded port).
+						l, err := net.Listen("tcp", "127.0.0.1:0")
+						if err != nil {
+							t.Fatalf("failed to reserve port: %v", err)
+						}
+						refusedPort := l.Addr().(*net.TCPAddr).Port
+						_ = l.Close()
+						config.SMTPHost = "127.0.0.1"
+						config.SMTPPort = refusedPort
 					}
 					_ = database.SaveConfig(config)
 				}

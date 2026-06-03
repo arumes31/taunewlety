@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"time"
 )
 
@@ -114,7 +115,7 @@ func (c *TautulliClient) GetRecentlyAdded(count int) ([]map[string]interface{}, 
 }
 
 func (c *TautulliClient) GetWatchHistory(ratingKey string) (int, error) {
-	url := fmt.Sprintf("%s/api/v2?apikey=%s&cmd=get_history&rating_key=%s", c.BaseURL, c.APIKey, ratingKey)
+	url := fmt.Sprintf("%s/api/v2?apikey=%s&cmd=get_history&rating_key=%s", c.BaseURL, c.APIKey, url.QueryEscape(ratingKey))
 	resp, err := c.HTTP.Get(url)
 	if err != nil {
 		return 0, err

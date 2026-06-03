@@ -3,22 +3,22 @@ package taunewlety
 import (
 	"bufio"
 	"context"
-	"errors"
 	"encoding/json"
+	"errors"
 	"net"
-
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"strings"
-	"taunewlety/internal/domain/models"
-	"taunewlety/internal/platform/clients"
-	"taunewlety/internal/platform/database"
 	"testing"
 	"time"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+
+	"taunewlety/internal/domain/models"
+	"taunewlety/internal/platform/clients"
+	"taunewlety/internal/platform/database"
 )
 
 // mockSMTPServer provides a simple SMTP server for testing.
@@ -121,7 +121,7 @@ func TestApp_Lifecycle(t *testing.T) {
 
 		app := NewApp()
 		ctx, cancel := context.WithCancel(context.Background())
-		
+
 		errChan := make(chan error, 1)
 		go func() {
 			errChan <- app.Run(ctx)
@@ -178,19 +178,32 @@ func TestApp_Lifecycle(t *testing.T) {
 
 	t.Run("Forced Shutdown Error", func(t *testing.T) {
 		app := NewApp()
-		// Mock server to return error on Shutdown
-		// Since app.srv is a struct, we just need a way to make Shutdown fail
-		// Passing a nil context or already cancelled context to a started server
-		app.srv = &http.Server{Addr: ":0"}
-		
+
+		// Start a real listener to put the server in a state
+		// where Shutdown will actually try to close it
+		l, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatalf("failed to listen: %v", err)
+		}
+
+		app.srv = &http.Server{}
+		go func() { _ = app.srv.Serve(l) }()
+		time.Sleep(50 * time.Millisecond)
+
+		// Use an already-cancelled context to force Shutdown error
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 
-		err := app.Shutdown(ctx)
+		// Keep a connection open to prevent clean shutdown
+		conn, dialErr := net.Dial("tcp", l.Addr().String())
+		if dialErr != nil {
+			t.Fatalf("failed to dial: %v", dialErr)
+		}
+		defer conn.Close()
+
+		err = app.Shutdown(ctx)
 		if err == nil {
-			// This might still be nil if server not started
-			// To ensure coverage, we can't easily force error without a mock
-			// But the Shutdown(ctx) line itself is called.
+			t.Error("expected Shutdown to fail on cancelled context, got nil")
 		}
 	})
 
@@ -304,12 +317,12 @@ func TestApp_Scheduler(t *testing.T) {
 
 				app := NewApp()
 				app.setupScheduler()
-				
+
 				entries := app.cron.Entries()
 				if len(entries) == 0 {
 					t.Fatal("no cron job registered")
 				}
-				
+
 				// Run the job manually
 				entries[0].Job.Run()
 			})

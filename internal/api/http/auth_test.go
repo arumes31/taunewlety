@@ -51,19 +51,19 @@ func TestLoginGet(t *testing.T) {
 
 func TestLoginPost(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	
+
 	setup := func() (*gin.Engine, string, string) {
 		os.Setenv("APP_USER", "admin")
 		os.Setenv("APP_PASS", "password")
 		os.Setenv("SESSION_SECRET", "test-secret")
-		
+
 		r := SetupRouter()
-		
+
 		// Get a valid CSRF token and cookie
 		w := httptest.NewRecorder()
 		req, _ := http.NewRequest(http.MethodGet, "/login", nil)
 		r.ServeHTTP(w, req)
-		
+
 		re := regexp.MustCompile(`name="csrf_token" value="([^"]+)"`)
 		matches := re.FindStringSubmatch(w.Body.String())
 		csrf := ""
@@ -157,14 +157,11 @@ func TestLoginPost(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			r, validCsrf, cookie := setup()
-			
-			// Override env for this test case
-			os.Setenv("APP_USER", tt.envUser)
-			os.Setenv("APP_PASS", tt.envPass)
-			defer func() {
-				os.Setenv("APP_USER", "admin")
-				os.Setenv("APP_PASS", "password")
-			}()
+
+			// Override env for this test case; t.Setenv restores the prior
+			// value automatically after the subtest.
+			t.Setenv("APP_USER", tt.envUser)
+			t.Setenv("APP_PASS", tt.envPass)
 
 			csrf := tt.csrf
 			if csrf == "" && tt.name == "Success" { // Shortcut for success case
@@ -218,7 +215,7 @@ func TestAuthHandlers_SessionSaveFailure(t *testing.T) {
 	}()
 
 	gin.SetMode(gin.TestMode)
-	
+
 	r := gin.New()
 	store := cookie.NewStore([]byte("secret"))
 	r.Use(sessions.Sessions("mysession", store))
