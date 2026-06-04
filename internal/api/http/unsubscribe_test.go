@@ -26,7 +26,10 @@ func (failReader) Read(p []byte) (n int, err error) {
 }
 
 func TestUnsubscribeHandlers(t *testing.T) {
-	database.InitDB(":memory:")
+	os.Setenv("DB_PATH", ":memory:")
+	defer os.Unsetenv("DB_PATH")
+
+	database.InitDB()
 	os.Setenv("SESSION_SECRET", "test-secret-123")
 	defer os.Unsetenv("SESSION_SECRET")
 
@@ -196,7 +199,10 @@ func TestUnsubscribeHandlers_CaptchaGenerationError(t *testing.T) {
 }
 
 func TestUnsubscribePost_MissingCaptchaInSession(t *testing.T) {
-	database.InitDB(":memory:")
+	os.Setenv("DB_PATH", ":memory:")
+	defer os.Unsetenv("DB_PATH")
+
+	database.InitDB()
 	gin.SetMode(gin.TestMode)
 	h := NewHandler()
 	
@@ -230,7 +236,10 @@ func TestUnsubscribePost_MissingCaptchaInSession(t *testing.T) {
 }
 
 func TestUnsubscribePost_CaptchaStringAndDBError(t *testing.T) {
-	database.InitDB(":memory:")
+	os.Setenv("DB_PATH", ":memory:")
+	defer os.Unsetenv("DB_PATH")
+
+	database.InitDB()
 	database.DB.Create(&models.Subscriber{Email: "test@example.com"})
 
 	gin.SetMode(gin.TestMode)
@@ -297,7 +306,10 @@ func TestUnsubscribePost_CaptchaStringAndDBError(t *testing.T) {
 }
 
 func TestUnsubscribePost_EdgeCases(t *testing.T) {
-	database.InitDB(":memory:")
+	os.Setenv("DB_PATH", ":memory:")
+	defer os.Unsetenv("DB_PATH")
+
+	database.InitDB()
 	gin.SetMode(gin.TestMode)
 	h := NewHandler()
 

@@ -18,7 +18,7 @@
 graph TD
     subgraph Local Server
         App[TauNewlety Go Backend]
-        DB[(SQLite Persistence)]
+        DB[(PostgreSQL Database)]
         Ollama[Ollama LLM Container]
     end
     
@@ -64,7 +64,7 @@ graph TD
 - **Secure Unsubscribe**: Confirmation flow protected by math-based **Captcha**.
 - **Local AI**: No data leaves your server; all generation happens locally on your CPU.
 - **Hardened Server**: Built-in Slowloris protection and secure session management.
-- **Containerized**: Runs securely in isolated Docker containers.
+- **Containerized**: Runs securely in isolated Docker containers with a dedicated PostgreSQL backend.
 
 ---
 
@@ -83,8 +83,8 @@ cp .env.example .env
 Set the following mandatory variables:
 - `APP_USER`: Your dashboard username.
 - `APP_PASS`: Your dashboard password.
-- `SESSION_SECRET`: A long random string (e.g., `openssl rand -base64 32`).
-- `PORT`: Dashboard port (defaults to `8080`).
+- `SESSION_SECRET`: A long random string.
+- `DB_USER`, `DB_PASSWORD`, `DB_NAME`: Credentials for the PostgreSQL container.
 
 ### 3. Deploy with Docker Compose
 Run the stack in the background:
@@ -93,7 +93,8 @@ docker-compose -f deployments/docker/docker-compose.yml up -d
 ```
 This will start:
 1.  **TauNewlety**: The main application logic.
-2.  **Ollama**: The local AI engine (will automatically pull `llama3.2:3b` on first start).
+2.  **PostgreSQL**: Persistent relational data store.
+3.  **Ollama**: The local AI engine (will automatically pull `llama3.2:3b` on first start).
 
 ### 4. Application Configuration
 1.  Access the dashboard at `http://YOUR_SERVER_IP:8080`.
@@ -115,7 +116,7 @@ The application includes a built-in scheduler. You can define the delivery frequ
 ## 🛠 Tech Stack
 - **Backend**: Go 1.26 (Standard Layout)
 - **Frontend**: Vanilla CSS & HTML Templates (No external CDNs)
-- **Database**: SQLite (GORM)
+- **Database**: PostgreSQL (GORM)
 - **AI**: Ollama (Llama 3.2:3b)
 - **CI/CD**: GitHub Actions (Multi-arch, Security Scanned)
 

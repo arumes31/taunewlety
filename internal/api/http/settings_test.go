@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -17,6 +18,9 @@ import (
 )
 
 func TestSettingsHandlers_DashboardGet(t *testing.T) {
+	os.Setenv("DB_PATH", ":memory:")
+	defer os.Unsetenv("DB_PATH")
+
 	gin.SetMode(gin.TestMode)
 
 	tests := []struct {
@@ -28,7 +32,7 @@ func TestSettingsHandlers_DashboardGet(t *testing.T) {
 		{
 			name: "Success",
 			setup: func() {
-				database.InitDB(":memory:")
+				database.InitDB()
 				database.DB.Create(&models.Subscriber{Email: "test@example.com"})
 				database.DB.Create(&models.TokenUsage{TotalTokens: 100})
 			},
@@ -38,7 +42,7 @@ func TestSettingsHandlers_DashboardGet(t *testing.T) {
 		{
 			name: "ScanError",
 			setup: func() {
-				database.InitDB(":memory:")
+				database.InitDB()
 				_ = database.DB.Migrator().DropTable(&models.TokenUsage{})
 			},
 			expectedStatus: http.StatusOK,
@@ -46,7 +50,7 @@ func TestSettingsHandlers_DashboardGet(t *testing.T) {
 		{
 			name: "ConfigNil",
 			setup: func() {
-				database.InitDB(":memory:")
+				database.InitDB()
 				database.DB.Exec("DELETE FROM configs")
 			},
 			expectedStatus: http.StatusOK,
@@ -76,6 +80,9 @@ func TestSettingsHandlers_DashboardGet(t *testing.T) {
 }
 
 func TestSettingsHandlers_SettingsPost(t *testing.T) {
+	os.Setenv("DB_PATH", ":memory:")
+	defer os.Unsetenv("DB_PATH")
+
 	gin.SetMode(gin.TestMode)
 
 	tests := []struct {
@@ -94,7 +101,7 @@ func TestSettingsHandlers_SettingsPost(t *testing.T) {
 		{
 			name: "SaveError",
 			setup: func() {
-				database.InitDB(":memory:")
+				database.InitDB()
 				_ = database.DB.Callback().Create().Before("gorm:create").Register("fail_save", func(d *gorm.DB) {
 					_ = d.AddError(errors.New("simulated save error"))
 				})
@@ -111,7 +118,7 @@ func TestSettingsHandlers_SettingsPost(t *testing.T) {
 		{
 			name: "SuccessNewConfig",
 			setup: func() {
-				database.InitDB(":memory:")
+				database.InitDB()
 				database.DB.Exec("DELETE FROM configs")
 			},
 			formData: url.Values{
@@ -123,7 +130,7 @@ func TestSettingsHandlers_SettingsPost(t *testing.T) {
 		{
 			name: "SuccessUpdateConfig",
 			setup: func() {
-				database.InitDB(":memory:")
+				database.InitDB()
 			},
 			formData: url.Values{
 				"tautulli_url": {"http://updated-config:8181"},

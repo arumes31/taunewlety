@@ -12,11 +12,29 @@ services:
       - APP_PASS=${APP_PASS:?APP_PASS is required}
       - SESSION_SECRET=${SESSION_SECRET}
       - NOTIFY_EMAIL=${NOTIFY_EMAIL}
-      - DB_PATH=/data/taunewlety.db
-    volumes:
-      - ./data:/data
+      - DB_TYPE=postgres
+      - DB_HOST=db
+      - DB_USER=${DB_USER:-tauuser}
+      - DB_PASSWORD=${DB_PASSWORD:-taupass}
+      - DB_NAME=${DB_NAME:-taunewlety}
+      - DB_PORT=5432
     depends_on:
+      - db
       - ollama
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=${DB_USER:-tauuser}
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-taupass}
+      - POSTGRES_DB=${DB_NAME:-taunewlety}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-tauuser} -d ${DB_NAME:-taunewlety}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   ollama:
     image: ollama/ollama:latest
@@ -28,4 +46,7 @@ services:
     entrypoint: ["/bin/sh", "/init-ollama.sh"]
     environment:
       - OLLAMA_MODEL=llama3.2:3b
+
+volumes:
+  postgres_data:
 

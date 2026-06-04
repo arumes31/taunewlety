@@ -2,6 +2,7 @@ package database
 
 import (
 	"errors"
+	"os"
 	"testing"
 
 	"taunewlety/internal/domain/models"
@@ -11,6 +12,9 @@ import (
 )
 
 func TestInitDB(t *testing.T) {
+	os.Setenv("DB_PATH", ":memory:")
+	defer os.Unsetenv("DB_PATH")
+
 	// Backup and restore globals
 	oldDB := DB
 	oldOpenDB := OpenDB
@@ -26,11 +30,11 @@ func TestInitDB(t *testing.T) {
 	t.Run("Success_SeedDefault", func(t *testing.T) {
 		logFatalf = func(format string, v ...interface{}) { t.Errorf("logFatalf called unexpectedly: "+format, v...) }
 		logPrintf = func(format string, v ...interface{}) { t.Errorf("logPrintf called unexpectedly: "+format, v...) }
-		OpenDB = func(dbPath string) (*gorm.DB, error) {
-			return gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
+		OpenDB = func() (*gorm.DB, error) {
+			return gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 		}
 
-		InitDB(":memory:")
+		InitDB()
 
 		if DB == nil {
 			t.Fatal("DB should not be nil")
@@ -48,14 +52,14 @@ func TestInitDB(t *testing.T) {
 		logPrintf = func(format string, v ...interface{}) { t.Errorf("logPrintf called unexpectedly: "+format, v...) }
 
 		sharedDSN := "file::memory:?cache=shared"
-		OpenDB = func(dbPath string) (*gorm.DB, error) {
+		OpenDB = func() (*gorm.DB, error) {
 			return gorm.Open(sqlite.Open(sharedDSN), &gorm.Config{})
 		}
 
 		// First call seeds
-		InitDB(sharedDSN)
+		InitDB()
 		// Second call skips seeding (same shared DB)
-		InitDB(sharedDSN)
+		InitDB()
 
 		var count int64
 		DB.Model(&models.Config{}).Count(&count)
@@ -67,9 +71,9 @@ func TestInitDB(t *testing.T) {
 	t.Run("OpenDB_Error", func(t *testing.T) {
 		var fatalCalled bool
 		logFatalf = func(format string, v ...interface{}) { fatalCalled = true }
-		OpenDB = func(dbPath string) (*gorm.DB, error) { return nil, errors.New("open error") }
+		OpenDB = func() (*gorm.DB, error) { return nil, errors.New("open error") }
 
-		InitDB(":memory:")
+		InitDB()
 
 		if !fatalCalled {
 			t.Error("expected logFatalf to be called")
@@ -79,15 +83,15 @@ func TestInitDB(t *testing.T) {
 	t.Run("AutoMigrate_Error", func(t *testing.T) {
 		var fatalCalled bool
 		logFatalf = func(format string, v ...interface{}) { fatalCalled = true }
-		OpenDB = func(dbPath string) (*gorm.DB, error) {
+		OpenDB = func() (*gorm.DB, error) {
 			db, _ := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 			// Close the database to make AutoMigrate fail
 			sqlDB, _ := db.DB()
-			sqlDB.Close()
+			_ = sqlDB.Close()
 			return db, nil
 		}
 
-		InitDB(":memory:")
+		InitDB()
 
 		if !fatalCalled {
 			t.Error("expected logFatalf to be called")
@@ -97,7 +101,7 @@ func TestInitDB(t *testing.T) {
 	t.Run("Count_Error", func(t *testing.T) {
 		var printfCalled bool
 		logPrintf = func(format string, v ...interface{}) { printfCalled = true }
-		OpenDB = func(dbPath string) (*gorm.DB, error) {
+		OpenDB = func() (*gorm.DB, error) {
 			db, _ := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 			// Fail Count query
 			_ = db.Callback().Query().Before("gorm:query").Register("fail_query", func(d *gorm.DB) {
@@ -108,7 +112,7 @@ func TestInitDB(t *testing.T) {
 			return db, nil
 		}
 
-		InitDB(":memory:")
+		InitDB()
 
 		if !printfCalled {
 			t.Error("expected logPrintf to be called")
@@ -118,7 +122,7 @@ func TestInitDB(t *testing.T) {
 	t.Run("Create_Error", func(t *testing.T) {
 		var printfCalled bool
 		logPrintf = func(format string, v ...interface{}) { printfCalled = true }
-		OpenDB = func(dbPath string) (*gorm.DB, error) {
+		OpenDB = func() (*gorm.DB, error) {
 			db, _ := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 			// Fail Create
 			_ = db.Callback().Create().Before("gorm:create").Register("fail_create", func(d *gorm.DB) {
@@ -128,7 +132,7 @@ func TestInitDB(t *testing.T) {
 			return db, nil
 		}
 
-		InitDB(":memory:")
+		InitDB()
 
 		if !printfCalled {
 			t.Error("expected logPrintf to be called")
@@ -138,7 +142,7 @@ func TestInitDB(t *testing.T) {
 	t.Run("Create_RowsAffectedZero", func(t *testing.T) {
 		var printfCalled bool
 		logPrintf = func(format string, v ...interface{}) { printfCalled = true }
-		OpenDB = func(dbPath string) (*gorm.DB, error) {
+		OpenDB = func() (*gorm.DB, error) {
 			db, _ := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 			// Set RowsAffected to 0 after create
 			_ = db.Callback().Create().After("gorm:create").Register("zero_rows", func(d *gorm.DB) {
@@ -148,21 +152,31 @@ func TestInitDB(t *testing.T) {
 			return db, nil
 		}
 
-		InitDB(":memory:")
+		InitDB()
 
 		if !printfCalled {
 			t.Error("expected logPrintf to be called")
 		}
 	})
 
-	t.Run("RealOpenDB", func(t *testing.T) {
-		// This covers the real OpenDB function body
-		db, err := oldOpenDB(":memory:")
-		if err != nil {
-			t.Errorf("real OpenDB failed: %v", err)
-		}
-		if db == nil {
-			t.Error("real OpenDB returned nil db")
+	t.Run("RealOpenDB_Postgres", func(t *testing.T) {
+		os.Setenv("DB_TYPE", "postgres")
+		os.Setenv("DB_HOST", "localhost")
+		os.Setenv("DB_USER", "user")
+		os.Setenv("DB_PASSWORD", "pass")
+		os.Setenv("DB_NAME", "db")
+		defer func() {
+			os.Unsetenv("DB_TYPE")
+			os.Unsetenv("DB_HOST")
+			os.Unsetenv("DB_USER")
+			os.Unsetenv("DB_PASSWORD")
+			os.Unsetenv("DB_NAME")
+		}()
+
+		// This will fail to connect but should cover the branch
+		_, err := oldOpenDB()
+		if err == nil {
+			t.Error("expected error connecting to non-existent postgres, got nil")
 		}
 	})
 }

@@ -261,6 +261,9 @@ func TestApp_RunRobustness(t *testing.T) {
 }
 
 func TestApp_Scheduler(t *testing.T) {
+	os.Setenv("DB_PATH", ":memory:")
+	defer os.Unsetenv("DB_PATH")
+
 	t.Run("Cron Setup Error", func(t *testing.T) {
 		oldSchedule := cronSchedule
 		cronSchedule = "invalid schedule string"
@@ -280,7 +283,8 @@ func TestApp_Scheduler(t *testing.T) {
 			{
 				name: "Missing Config",
 				setup: func(t *testing.T) (*httptest.Server, *mockSMTPServer) {
-					database.InitDB(":memory:")
+					database.InitDB()
+
 					database.DB.Exec("DELETE FROM configs")
 					return nil, nil
 				},
@@ -288,7 +292,8 @@ func TestApp_Scheduler(t *testing.T) {
 			{
 				name: "Generation Fails",
 				setup: func(t *testing.T) (*httptest.Server, *mockSMTPServer) {
-					database.InitDB(":memory:")
+					database.InitDB()
+
 					config, _ := database.GetConfig()
 					config.TautulliURL = "http://invalid-url-123.local"
 					_ = database.SaveConfig(config)
@@ -322,7 +327,8 @@ func TestApp_Scheduler(t *testing.T) {
 					smtpSrv := startMockSMTPServer(t)
 					smtpAddr := smtpSrv.listener.Addr().(*net.TCPAddr)
 
-					database.InitDB(":memory:")
+					database.InitDB()
+
 					config, _ := database.GetConfig()
 					config.TautulliURL = ts.URL
 					config.OllamaURL = ts.URL

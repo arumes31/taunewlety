@@ -91,6 +91,9 @@ func (s *mockSMTPServer) Close() {
 }
 
 func TestNewsletterHandlers(t *testing.T) {
+	os.Setenv("DB_PATH", ":memory:")
+	defer os.Unsetenv("DB_PATH")
+
 	gin.SetMode(gin.TestMode)
 	os.Setenv("NOTIFY_EMAIL", "notify@example.com")
 	defer os.Unsetenv("NOTIFY_EMAIL")
@@ -106,7 +109,7 @@ func TestNewsletterHandlers(t *testing.T) {
 			{
 				name: "ConfigNil",
 				setupDB: func() {
-					database.InitDB(":memory:")
+					database.InitDB()
 					database.DB.Exec("DELETE FROM configs")
 				},
 				expectedStatus: http.StatusBadRequest,
@@ -115,7 +118,7 @@ func TestNewsletterHandlers(t *testing.T) {
 			{
 				name: "GenerateError",
 				setupDB: func() {
-					database.InitDB(":memory:")
+					database.InitDB()
 				},
 				setupServer: func(w http.ResponseWriter, r *http.Request) {
 					w.WriteHeader(http.StatusInternalServerError)
@@ -125,7 +128,7 @@ func TestNewsletterHandlers(t *testing.T) {
 			{
 				name: "Success",
 				setupDB: func() {
-					database.InitDB(":memory:")
+					database.InitDB()
 				},
 				setupServer: func(w http.ResponseWriter, r *http.Request) {
 					w.Header().Set("Content-Type", "application/json")
@@ -196,7 +199,7 @@ func TestNewsletterHandlers(t *testing.T) {
 			{
 				name: "ConfigNil",
 				setupDB: func() {
-					database.InitDB(":memory:")
+					database.InitDB()
 					database.DB.Exec("DELETE FROM configs")
 				},
 				expectedStatus: http.StatusBadRequest,
@@ -205,7 +208,7 @@ func TestNewsletterHandlers(t *testing.T) {
 			{
 				name: "NoRecommendations",
 				setupDB: func() {
-					database.InitDB(":memory:")
+					database.InitDB()
 				},
 				setupServer: func(w http.ResponseWriter, r *http.Request) {
 					w.Header().Set("Content-Type", "application/json")
@@ -224,7 +227,7 @@ func TestNewsletterHandlers(t *testing.T) {
 			{
 				name: "GenerateError",
 				setupDB: func() {
-					database.InitDB(":memory:")
+					database.InitDB()
 				},
 				setupServer: func(w http.ResponseWriter, r *http.Request) {
 					w.WriteHeader(http.StatusInternalServerError)
@@ -234,7 +237,7 @@ func TestNewsletterHandlers(t *testing.T) {
 			{
 				name: "SMTPSendError",
 				setupDB: func() {
-					database.InitDB(":memory:")
+					database.InitDB()
 				},
 				setupServer: func(w http.ResponseWriter, r *http.Request) {
 					w.Header().Set("Content-Type", "application/json")
@@ -259,7 +262,7 @@ func TestNewsletterHandlers(t *testing.T) {
 			{
 				name: "Success",
 				setupDB: func() {
-					database.InitDB(":memory:")
+					database.InitDB()
 				},
 				setupServer: func(w http.ResponseWriter, r *http.Request) {
 					w.Header().Set("Content-Type", "application/json")
@@ -340,7 +343,9 @@ func TestNewsletterHandlers(t *testing.T) {
 	})
 
 	t.Run("SendManual_GetConfigError", func(t *testing.T) {
-		database.InitDB(":memory:")
+		os.Setenv("DB_PATH", ":memory:")
+		defer os.Unsetenv("DB_PATH")
+		database.InitDB()
 		sqlDB, _ := database.DB.DB()
 		sqlDB.Close()
 

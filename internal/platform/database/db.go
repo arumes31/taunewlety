@@ -1,25 +1,52 @@
 package database
 
 import (
+	"fmt"
 	"log"
+	"os"
 	"taunewlety/internal/domain/models"
 
 	"github.com/glebarez/sqlite"
+	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
 
 var (
 	DB     *gorm.DB
-	OpenDB = func(dbPath string) (*gorm.DB, error) {
+	OpenDB = func() (*gorm.DB, error) {
+		dbType := os.Getenv("DB_TYPE")
+		if dbType == "postgres" || os.Getenv("DB_HOST") != "" {
+			host := os.Getenv("DB_HOST")
+			user := os.Getenv("DB_USER")
+			password := os.Getenv("DB_PASSWORD")
+			dbname := os.Getenv("DB_NAME")
+			port := os.Getenv("DB_PORT")
+			if port == "" {
+				port = "5432"
+			}
+			sslmode := os.Getenv("DB_SSLMODE")
+			if sslmode == "" {
+				sslmode = "disable"
+			}
+
+			dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=%s",
+				host, user, password, dbname, port, sslmode)
+			return gorm.Open(postgres.Open(dsn), &gorm.Config{})
+		}
+
+		dbPath := os.Getenv("DB_PATH")
+		if dbPath == "" {
+			dbPath = "taunewlety.db"
+		}
 		return gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
 	}
 	logFatalf = log.Fatalf
 	logPrintf = log.Printf
 )
 
-func InitDB(dbPath string) {
+func InitDB() {
 	var err error
-	DB, err = OpenDB(dbPath)
+	DB, err = OpenDB()
 	if err != nil {
 		logFatalf("failed to connect database: %v", err)
 		return

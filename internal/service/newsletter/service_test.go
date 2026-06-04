@@ -2,6 +2,7 @@ package newsletter
 
 import (
 	"errors"
+	"os"
 	"strings"
 	"taunewlety/internal/domain/models"
 	"taunewlety/internal/platform/database"
@@ -9,7 +10,10 @@ import (
 )
 
 func TestNewsletterService_GenerateNewsletter(t *testing.T) {
-	database.InitDB(":memory:")
+	os.Setenv("DB_PATH", ":memory:")
+	defer os.Unsetenv("DB_PATH")
+
+	database.InitDB()
 
 	tests := []struct {
 		name           string

@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"strings"
 	"testing"
 
@@ -16,6 +17,9 @@ import (
 )
 
 func TestSubscriberAdd(t *testing.T) {
+	os.Setenv("DB_PATH", ":memory:")
+	defer os.Unsetenv("DB_PATH")
+
 	gin.SetMode(gin.TestMode)
 
 	tests := []struct {
@@ -79,7 +83,7 @@ func TestSubscriberAdd(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			database.InitDB(":memory:")
+			database.InitDB()
 			if tt.setupMock != nil {
 				tt.setupMock()
 			}
@@ -111,8 +115,12 @@ func TestSubscriberAdd(t *testing.T) {
 	}
 }
 
-func TestSubscriberDelete(t *testing.T) {
+func TestSubscribersHandlers(t *testing.T) {
+	os.Setenv("DB_PATH", ":memory:")
+	defer os.Unsetenv("DB_PATH")
+
 	gin.SetMode(gin.TestMode)
+
 
 	tests := []struct {
 		name           string
@@ -163,7 +171,7 @@ func TestSubscriberDelete(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			database.InitDB(":memory:")
+			database.InitDB()
 			if tt.setupMock != nil {
 				tt.setupMock()
 			}

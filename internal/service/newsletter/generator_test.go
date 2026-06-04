@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"taunewlety/internal/domain/models"
 	"taunewlety/internal/platform/clients"
 	"taunewlety/internal/platform/database"
@@ -11,7 +12,10 @@ import (
 )
 
 func TestNewsletterService_GenerateAIContent(t *testing.T) {
-	database.InitDB(":memory:")
+	os.Setenv("DB_PATH", ":memory:")
+	defer os.Unsetenv("DB_PATH")
+
+	database.InitDB()
 
 	tests := []struct {
 		name           string

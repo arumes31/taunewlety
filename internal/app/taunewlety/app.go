@@ -52,12 +52,7 @@ func (a *App) Run(ctx context.Context) error {
 		return errors.New("APP_USER and APP_PASS environment variables are required")
 	}
 
-	dbPath := os.Getenv("DB_PATH")
-	if dbPath == "" {
-		dbPath = "taunewlety.db"
-	}
-	database.InitDB(dbPath)
-
+	database.InitDB()
 	r := api_http.SetupRouter()
 
 	port := os.Getenv("PORT")
