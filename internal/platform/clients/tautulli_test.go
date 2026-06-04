@@ -135,7 +135,7 @@ func TestTautulliClient_GetRecentlyAdded(t *testing.T) {
 					if s, ok := tt.response.(string); ok {
 						fmt.Fprint(w, s)
 					} else {
-						json.NewEncoder(w).Encode(tt.response)
+						_ = json.NewEncoder(w).Encode(tt.response)
 					}
 				}
 			}))
@@ -272,7 +272,7 @@ func TestTautulliClient_GetWatchHistory(t *testing.T) {
 					if s, ok := tt.response.(string); ok {
 						fmt.Fprint(w, s)
 					} else {
-						json.NewEncoder(w).Encode(tt.response)
+						_ = json.NewEncoder(w).Encode(tt.response)
 					}
 				}
 			}))
@@ -310,7 +310,7 @@ func TestTautulliClient_GetWatchHistoryBatch(t *testing.T) {
 				w.WriteHeader(http.StatusInternalServerError)
 				return
 			}
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"response": map[string]interface{}{
 					"data": map[string]interface{}{
 						"recordsFiltered": 10.0,
@@ -468,7 +468,7 @@ func TestTautulliClient_GetTopWatched(t *testing.T) {
 					if s, ok := tt.response.(string); ok {
 						fmt.Fprint(w, s)
 					} else {
-						json.NewEncoder(w).Encode(tt.response)
+						_ = json.NewEncoder(w).Encode(tt.response)
 					}
 				}
 			}))
@@ -621,7 +621,7 @@ func TestTautulliClient_GetTopGenres(t *testing.T) {
 					if s, ok := tt.response.(string); ok {
 						fmt.Fprint(w, s)
 					} else {
-						json.NewEncoder(w).Encode(tt.response)
+						_ = json.NewEncoder(w).Encode(tt.response)
 					}
 				}
 			}))

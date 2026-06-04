@@ -20,7 +20,7 @@ func TestMixRecommendations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to connect database: %v", err)
 	}
-	db.AutoMigrate(&models.Blacklist{})
+	_ = db.AutoMigrate(&models.Blacklist{})
 	database.DB = db
 
 	tests := []struct {

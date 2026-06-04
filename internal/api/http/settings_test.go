@@ -39,7 +39,7 @@ func TestSettingsHandlers_DashboardGet(t *testing.T) {
 			name: "ScanError",
 			setup: func() {
 				database.InitDB(":memory:")
-				database.DB.Migrator().DropTable(&models.TokenUsage{})
+				_ = database.DB.Migrator().DropTable(&models.TokenUsage{})
 			},
 			expectedStatus: http.StatusOK,
 		},
@@ -95,12 +95,13 @@ func TestSettingsHandlers_SettingsPost(t *testing.T) {
 			name: "SaveError",
 			setup: func() {
 				database.InitDB(":memory:")
-				database.DB.Callback().Create().Before("gorm:create").Register("fail_save", func(d *gorm.DB) {
-					d.AddError(errors.New("simulated save error"))
+				_ = database.DB.Callback().Create().Before("gorm:create").Register("fail_save", func(d *gorm.DB) {
+					_ = d.AddError(errors.New("simulated save error"))
 				})
-				database.DB.Callback().Update().Before("gorm:update").Register("fail_save", func(d *gorm.DB) {
-					d.AddError(errors.New("simulated save error"))
+				_ = database.DB.Callback().Update().Before("gorm:update").Register("fail_save", func(d *gorm.DB) {
+					_ = d.AddError(errors.New("simulated save error"))
 				})
+
 			},
 			formData: url.Values{
 				"tautulli_url": {"http://localhost:8181"},

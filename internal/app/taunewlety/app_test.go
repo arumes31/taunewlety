@@ -46,39 +46,41 @@ func startMockSMTPServer(t *testing.T) *mockSMTPServer {
 				reader := bufio.NewReader(c)
 				writer := bufio.NewWriter(c)
 
-				writer.WriteString("220 mock-smtp ready\r\n")
-				writer.Flush()
+				_, _ = writer.WriteString("220 mock-smtp ready\r\n")
+				_ = writer.Flush()
 
 				for {
-					line, err := reader.ReadString('\n')
-					if err != nil {
-						break
-					}
-					cmd := strings.ToUpper(strings.TrimSpace(line))
-					if strings.HasPrefix(cmd, "EHLO") || strings.HasPrefix(cmd, "HELO") {
-						writer.WriteString("250-localhost\r\n250 AUTH PLAIN\r\n")
-					} else if strings.HasPrefix(cmd, "AUTH PLAIN") {
-						writer.WriteString("235 Authentication successful\r\n")
-					} else if strings.HasPrefix(cmd, "MAIL FROM") || strings.HasPrefix(cmd, "RCPT TO") {
-						writer.WriteString("250 OK\r\n")
-					} else if cmd == "DATA" {
-						writer.WriteString("354 Start mail input\r\n")
-						writer.Flush()
+				        line, err := reader.ReadString('\n')
+				        if err != nil {
+				                break
+				        }
+				        cmd := strings.ToUpper(strings.TrimSpace(line))
+				        if strings.HasPrefix(cmd, "EHLO") || strings.HasPrefix(cmd, "HELO") {
+				                _, _ = writer.WriteString("250-localhost\r\n250 AUTH PLAIN\r\n")
+				        } else if strings.HasPrefix(cmd, "AUTH PLAIN") {
+				                _, _ = writer.WriteString("235 Authentication successful\r\n")
+				        } else if strings.HasPrefix(cmd, "MAIL FROM") || strings.HasPrefix(cmd, "RCPT TO") {
+				                _, _ = writer.WriteString("250 OK\r\n")
+				        } else if cmd == "DATA" {
+				                _, _ = writer.WriteString("354 Start mail input\r\n")       
+				                _ = writer.Flush()
+
 						for {
 							bodyLine, err := reader.ReadString('\n')
 							if err != nil || strings.TrimSpace(bodyLine) == "." {
 								break
 							}
 						}
-						writer.WriteString("250 OK\r\n")
-					} else if cmd == "QUIT" {
-						writer.WriteString("221 Bye\r\n")
-						writer.Flush()
+						_, _ = writer.WriteString("250 OK\r\n")
+						} else if cmd == "QUIT" {
+						_, _ = writer.WriteString("221 Bye\r\n")
+						_ = writer.Flush()
 						break
-					} else {
-						writer.WriteString("250 OK\r\n")
-					}
-					writer.Flush()
+						} else {
+						_, _ = writer.WriteString("250 OK\r\n")
+						}
+						_ = writer.Flush()
+
 				}
 			}(conn)
 		}
@@ -111,7 +113,11 @@ func TestNewApp(t *testing.T) {
 func TestApp_Lifecycle(t *testing.T) {
 	// Set common environment variables
 	os.Setenv("SESSION_SECRET", "app-test-secret-9876")
+	os.Setenv("APP_USER", "admin")
+	os.Setenv("APP_PASS", "password")
 	defer os.Unsetenv("SESSION_SECRET")
+	defer os.Unsetenv("APP_USER")
+	defer os.Unsetenv("APP_PASS")
 
 	t.Run("Successful Run and Shutdown", func(t *testing.T) {
 		os.Setenv("PORT", "9901")
@@ -209,12 +215,37 @@ func TestApp_Lifecycle(t *testing.T) {
 
 }
 
+func TestApp_RunMissingCredentials(t *testing.T) {
+	os.Setenv("SESSION_SECRET", "secret")
+	os.Unsetenv("APP_USER")
+	os.Unsetenv("APP_PASS")
+	defer os.Unsetenv("SESSION_SECRET")
+
+	oldFatal := loggerFatal
+	fatalCalled := false
+	loggerFatal = func(l *zap.Logger, m string, f ...zap.Field) { fatalCalled = true }
+	defer func() { loggerFatal = oldFatal }()
+
+	app := NewApp()
+	err := app.Run(context.Background())
+	if err == nil {
+		t.Error("expected Run to return an error when APP_USER/APP_PASS are unset")
+	}
+	if !fatalCalled {
+		t.Error("expected loggerFatal to be called when APP_USER/APP_PASS are unset")
+	}
+}
+
 func TestApp_RunRobustness(t *testing.T) {
 	t.Run("Default Environment Variables", func(t *testing.T) {
 		os.Unsetenv("PORT")
 		os.Unsetenv("DB_PATH")
 		os.Setenv("SESSION_SECRET", "secret")
+		os.Setenv("APP_USER", "admin")
+		os.Setenv("APP_PASS", "password")
 		defer os.Unsetenv("SESSION_SECRET")
+		defer os.Unsetenv("APP_USER")
+		defer os.Unsetenv("APP_PASS")
 		defer os.Remove("taunewlety.db")
 
 		// Mock fatal to avoid crash if 8080 is in use
@@ -260,7 +291,8 @@ func TestApp_Scheduler(t *testing.T) {
 					database.InitDB(":memory:")
 					config, _ := database.GetConfig()
 					config.TautulliURL = "http://invalid-url-123.local"
-					database.SaveConfig(config)
+					_ = database.SaveConfig(config)
+
 					return nil, nil
 				},
 			},
@@ -270,7 +302,7 @@ func TestApp_Scheduler(t *testing.T) {
 					ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 						w.Header().Set("Content-Type", "application/json")
 						if strings.Contains(r.URL.Path, "generate") {
-							json.NewEncoder(w).Encode(clients.OllamaResponse{Response: `{"subject":"S","body":"B"}`})
+							_ = json.NewEncoder(w).Encode(clients.OllamaResponse{Response: `{"subject":"S","body":"B"}`})
 							return
 						}
 						// Tautulli mock
@@ -283,7 +315,8 @@ func TestApp_Scheduler(t *testing.T) {
 								},
 							},
 						}
-						json.NewEncoder(w).Encode(payload)
+						_ = json.NewEncoder(w).Encode(payload)
+
 					}))
 
 					smtpSrv := startMockSMTPServer(t)
@@ -295,8 +328,7 @@ func TestApp_Scheduler(t *testing.T) {
 					config.OllamaURL = ts.URL
 					config.SMTPHost = smtpAddr.IP.String()
 					config.SMTPPort = smtpAddr.Port
-					database.SaveConfig(config)
-
+					_ = database.SaveConfig(config)
 					database.DB.Create(&models.Subscriber{Email: "sub@example.com", Active: true})
 					database.DB.Create(&models.Subscriber{Email: "inactive@example.com", Active: false})
 

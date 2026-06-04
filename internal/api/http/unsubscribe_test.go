@@ -280,10 +280,9 @@ func TestUnsubscribePost_CaptchaStringAndDBError(t *testing.T) {
 
 	// Test 2: Database delete failure
 	database.DB.Create(&models.Subscriber{Email: "test@example.com"})
-	database.DB.Callback().Delete().Before("gorm:delete").Register("fail_subscriber_delete", func(d *gorm.DB) {
-		d.AddError(fmt.Errorf("simulated subscriber delete error"))
+	_ = database.DB.Callback().Delete().Before("gorm:delete").Register("fail_subscriber_delete", func(d *gorm.DB) {
+		_ = d.AddError(fmt.Errorf("simulated subscriber delete error"))
 	})
-
 	w2 := httptest.NewRecorder()
 	req2, _ := http.NewRequest(http.MethodPost, "/unsubscribe", strings.NewReader(form1.Encode()))
 	req2.Header.Set("Content-Type", "application/x-www-form-urlencoded")

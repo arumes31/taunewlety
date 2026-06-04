@@ -41,9 +41,10 @@ func TestSubscriberAdd(t *testing.T) {
 			name:  "Database Error Checking Existence",
 			email: "test@example.com",
 			setupMock: func() {
-				database.DB.Callback().Query().Before("gorm:query").Register("fail_existence", func(d *gorm.DB) {
-					d.AddError(errors.New("simulated existence error"))
+				_ = database.DB.Callback().Query().Before("gorm:query").Register("fail_existence", func(d *gorm.DB) {
+					_ = d.AddError(errors.New("simulated existence error"))
 				})
+
 			},
 			expectedStatus: http.StatusInternalServerError,
 			expectedBody:   "Database error checking subscriber existence",
@@ -61,9 +62,10 @@ func TestSubscriberAdd(t *testing.T) {
 			name:  "Database Error on Create",
 			email: "new@example.com",
 			setupMock: func() {
-				database.DB.Callback().Create().Before("gorm:create").Register("fail_create", func(d *gorm.DB) {
-					d.AddError(errors.New("simulated create error"))
+				_ = database.DB.Callback().Create().Before("gorm:create").Register("fail_create", func(d *gorm.DB) {
+					_ = d.AddError(errors.New("simulated create error"))
 				})
+
 			},
 			expectedStatus: http.StatusInternalServerError,
 			expectedBody:   "Failed to add subscriber",
@@ -135,9 +137,10 @@ func TestSubscriberDelete(t *testing.T) {
 			name: "Database Error on Delete",
 			id:   "1",
 			setupMock: func() {
-				database.DB.Callback().Delete().Before("gorm:delete").Register("fail_delete", func(d *gorm.DB) {
-					d.AddError(errors.New("simulated delete error"))
+				_ = database.DB.Callback().Delete().Before("gorm:delete").Register("fail_delete", func(d *gorm.DB) {
+					_ = d.AddError(errors.New("simulated delete error"))
 				})
+
 			},
 			expectedStatus: http.StatusInternalServerError,
 			expectedBody:   "Failed to delete subscriber",

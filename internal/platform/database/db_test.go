@@ -100,8 +100,10 @@ func TestInitDB(t *testing.T) {
 		OpenDB = func(dbPath string) (*gorm.DB, error) {
 			db, _ := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 			// Fail Count query
-			db.Callback().Query().Before("gorm:query").Register("fail_query", func(d *gorm.DB) {
-				d.AddError(errors.New("query error"))
+			_ = db.Callback().Query().Before("gorm:query").Register("fail_query", func(d *gorm.DB) {
+
+				_ = d.AddError(errors.New("query error"))
+
 			})
 			return db, nil
 		}
@@ -119,8 +121,9 @@ func TestInitDB(t *testing.T) {
 		OpenDB = func(dbPath string) (*gorm.DB, error) {
 			db, _ := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 			// Fail Create
-			db.Callback().Create().Before("gorm:create").Register("fail_create", func(d *gorm.DB) {
-				d.AddError(errors.New("create error"))
+			_ = db.Callback().Create().Before("gorm:create").Register("fail_create", func(d *gorm.DB) {
+				_ = d.AddError(errors.New("create error"))
+
 			})
 			return db, nil
 		}
@@ -138,7 +141,8 @@ func TestInitDB(t *testing.T) {
 		OpenDB = func(dbPath string) (*gorm.DB, error) {
 			db, _ := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 			// Set RowsAffected to 0 after create
-			db.Callback().Create().After("gorm:create").Register("zero_rows", func(d *gorm.DB) {
+			_ = db.Callback().Create().After("gorm:create").Register("zero_rows", func(d *gorm.DB) {
+
 				d.RowsAffected = 0
 			})
 			return db, nil
@@ -170,7 +174,8 @@ func TestGetConfig(t *testing.T) {
 	t.Run("Success", func(t *testing.T) {
 		db, _ := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 		DB = db
-		DB.AutoMigrate(&models.Config{})
+		_ = DB.AutoMigrate(&models.Config{})
+
 		DB.Create(&models.Config{Language: "en"})
 
 		cfg, err := GetConfig()
@@ -200,8 +205,7 @@ func TestSaveConfig(t *testing.T) {
 	t.Run("Create_Success", func(t *testing.T) {
 		db, _ := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 		DB = db
-		DB.AutoMigrate(&models.Config{})
-
+		_ = DB.AutoMigrate(&models.Config{})
 		err := SaveConfig(&models.Config{Language: "fr"})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -217,7 +221,8 @@ func TestSaveConfig(t *testing.T) {
 	t.Run("Update_Success", func(t *testing.T) {
 		db, _ := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 		DB = db
-		DB.AutoMigrate(&models.Config{})
+		_ = DB.AutoMigrate(&models.Config{})
+
 		DB.Create(&models.Config{Language: "en"})
 
 		err := SaveConfig(&models.Config{Language: "es"})
@@ -248,9 +253,11 @@ func TestSaveConfig(t *testing.T) {
 	t.Run("Create_Error", func(t *testing.T) {
 		db, _ := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 		DB = db
-		DB.AutoMigrate(&models.Config{})
-		DB.Callback().Create().Before("gorm:create").Register("fail", func(d *gorm.DB) {
-			d.AddError(errors.New("fail"))
+		_ = DB.AutoMigrate(&models.Config{})
+
+		_ = db.Callback().Create().Before("gorm:create").Register("fail", func(d *gorm.DB) {
+			_ = d.AddError(errors.New("fail"))
+
 		})
 
 		err := SaveConfig(&models.Config{})
@@ -262,11 +269,13 @@ func TestSaveConfig(t *testing.T) {
 	t.Run("Save_Error", func(t *testing.T) {
 		db, _ := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 		DB = db
-		DB.AutoMigrate(&models.Config{})
+		_ = DB.AutoMigrate(&models.Config{})
+
 		DB.Create(&models.Config{Language: "en"})
 
-		DB.Callback().Update().Before("gorm:update").Register("fail", func(d *gorm.DB) {
-			d.AddError(errors.New("fail"))
+		_ = DB.Callback().Update().Before("gorm:update").Register("fail", func(d *gorm.DB) {
+			_ = d.AddError(errors.New("fail"))
+
 		})
 
 		err := SaveConfig(&models.Config{Language: "es"})
