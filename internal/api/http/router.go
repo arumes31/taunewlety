@@ -42,6 +42,10 @@ func resolveWebDir() string {
 func SetupRouter() *gin.Engine {
 	r := gin.Default()
 
+	// Best practice: Set trusted proxies to nil to disable by default.
+	// This prevents spoofing of client IP addresses.
+	_ = r.SetTrustedProxies(nil)
+
 	sessionSecret := os.Getenv("SESSION_SECRET")
 	if sessionSecret == "" {
 		logFatal("SESSION_SECRET environment variable is required but was not set")
@@ -53,7 +57,7 @@ func SetupRouter() *gin.Engine {
 		Path:     "/",
 		HttpOnly: true,
 		Secure:   os.Getenv("ENV") == "production" || os.Getenv("COOKIE_SECURE") == "true",
-		SameSite: http.SameSiteLaxMode,
+		SameSite: http.SameSiteStrictMode,
 	})
 
 	r.Use(sessions.Sessions("mysession", store))

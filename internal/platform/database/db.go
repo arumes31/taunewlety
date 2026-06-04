@@ -4,12 +4,21 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"taunewlety/internal/domain/models"
+	"time"
 
 	"github.com/glebarez/sqlite"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
+
+// escapeDSNValue escapes values for use in a PostgreSQL DSN key=value string.
+func escapeDSNValue(val string) string {
+	escaped := strings.ReplaceAll(val, "\\", "\\\\")
+	escaped = strings.ReplaceAll(escaped, "'", "''")
+	return "'" + escaped + "'"
+}
 
 var (
 	DB     *gorm.DB
@@ -20,25 +29,38 @@ var (
 			user := os.Getenv("DB_USER")
 			password := os.Getenv("DB_PASSWORD")
 			dbname := os.Getenv("DB_NAME")
+
+			if host == "" || user == "" || password == "" || dbname == "" {
+				return nil, fmt.Errorf("missing required database connection parameters (DB_HOST, DB_USER, DB_PASSWORD, DB_NAME)")
+			}
+
 			port := os.Getenv("DB_PORT")
 			if port == "" {
 				port = "5432"
 			}
+			// sslmode: defaults to 'require' for security. 
+			// For local development without SSL, set DB_SSLMODE=disable.
 			sslmode := os.Getenv("DB_SSLMODE")
 			if sslmode == "" {
-				sslmode = "disable"
+				sslmode = "require"
 			}
 
 			dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=%s",
-				host, user, password, dbname, port, sslmode)
-			return gorm.Open(postgres.Open(dsn), &gorm.Config{})
+				escapeDSNValue(host), escapeDSNValue(user), escapeDSNValue(password), escapeDSNValue(dbname), escapeDSNValue(port), escapeDSNValue(sslmode))
+			return gorm.Open(postgres.Open(dsn), &gorm.Config{
+				SkipDefaultTransaction: true,
+				PrepareStmt:            true,
+			})
 		}
 
 		dbPath := os.Getenv("DB_PATH")
 		if dbPath == "" {
 			dbPath = "taunewlety.db"
 		}
-		return gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
+		return gorm.Open(sqlite.Open(dbPath), &gorm.Config{
+			SkipDefaultTransaction: true,
+			PrepareStmt:            true,
+		})
 	}
 	logFatalf = log.Fatalf
 	logPrintf = log.Printf
@@ -50,6 +72,16 @@ func InitDB() {
 	if err != nil {
 		logFatalf("failed to connect database: %v", err)
 		return
+	}
+
+	// Best practice: Configure connection pool settings
+	sqlDB, err := DB.DB()
+	if err != nil {
+		logPrintf("failed to get underlying sql.DB for connection pool configuration: %v", err)
+	} else {
+		sqlDB.SetMaxIdleConns(10)
+		sqlDB.SetMaxOpenConns(100)
+		sqlDB.SetConnMaxLifetime(time.Hour)
 	}
 
 	// Auto-migrate the schema
