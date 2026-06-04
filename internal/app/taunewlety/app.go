@@ -2,6 +2,7 @@ package taunewlety
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"os"
 	api_http "taunewlety/internal/api/http"
@@ -43,6 +44,13 @@ func NewApp() *App {
 
 func (a *App) Run(ctx context.Context) error {
 	defer func() { _ = a.logger.Sync() }()
+
+	// Fail fast if authentication credentials are not configured, rather than
+	// surfacing the error lazily on the first login attempt.
+	if os.Getenv("APP_USER") == "" || os.Getenv("APP_PASS") == "" {
+		loggerFatal(a.logger, "APP_USER and APP_PASS environment variables are required but were not set")
+		return errors.New("APP_USER and APP_PASS environment variables are required")
+	}
 
 	dbPath := os.Getenv("DB_PATH")
 	if dbPath == "" {

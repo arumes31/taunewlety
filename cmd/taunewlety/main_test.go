@@ -28,10 +28,14 @@ func TestMainFunc(t *testing.T) {
 	os.Setenv("PORT", freePort(t))
 	os.Setenv("DB_PATH", ":memory:")
 	os.Setenv("SESSION_SECRET", "main-test-secret-9876")
+	os.Setenv("APP_USER", "admin")
+	os.Setenv("APP_PASS", "password")
 	defer func() {
 		os.Unsetenv("PORT")
 		os.Unsetenv("DB_PATH")
 		os.Unsetenv("SESSION_SECRET")
+		os.Unsetenv("APP_USER")
+		os.Unsetenv("APP_PASS")
 	}()
 
 	var triggerCancel context.CancelFunc
@@ -92,10 +96,14 @@ func TestMainFunc_ShutdownError(t *testing.T) {
 	os.Setenv("PORT", port)
 	os.Setenv("DB_PATH", ":memory:")
 	os.Setenv("SESSION_SECRET", "main-test-secret-9876")
+	os.Setenv("APP_USER", "admin")
+	os.Setenv("APP_PASS", "password")
 	defer func() {
 		os.Unsetenv("PORT")
 		os.Unsetenv("DB_PATH")
 		os.Unsetenv("SESSION_SECRET")
+		os.Unsetenv("APP_USER")
+		os.Unsetenv("APP_PASS")
 	}()
 
 	// Force Shutdown to time out/error immediately
