@@ -59,8 +59,12 @@ func (c *TautulliClient) GetWatchHistoryBatch(ratingKeys []string) (map[string]W
 }
 
 func (c *TautulliClient) GetRecentlyAdded(count int) ([]map[string]interface{}, error) {
-	url := fmt.Sprintf("%s/api/v2?apikey=%s&cmd=get_recently_added&count=%d", c.BaseURL, c.APIKey, count)
-	resp, err := c.HTTP.Get(url)
+	params := url.Values{}
+	params.Set("apikey", c.APIKey)
+	params.Set("cmd", "get_recently_added")
+	params.Set("count", fmt.Sprintf("%d", count))
+	fullURL := c.BaseURL + "/api/v2?" + params.Encode()
+	resp, err := c.HTTP.Get(fullURL)
 	if err != nil {
 		return nil, err
 	}
@@ -115,8 +119,12 @@ func (c *TautulliClient) GetRecentlyAdded(count int) ([]map[string]interface{}, 
 }
 
 func (c *TautulliClient) GetWatchHistory(ratingKey string) (int, error) {
-	url := fmt.Sprintf("%s/api/v2?apikey=%s&cmd=get_history&rating_key=%s", c.BaseURL, c.APIKey, url.QueryEscape(ratingKey))
-	resp, err := c.HTTP.Get(url)
+	params := url.Values{}
+	params.Set("apikey", c.APIKey)
+	params.Set("cmd", "get_history")
+	params.Set("rating_key", ratingKey)
+	fullURL := c.BaseURL + "/api/v2?" + params.Encode()
+	resp, err := c.HTTP.Get(fullURL)
 	if err != nil {
 		return 0, err
 	}
@@ -163,8 +171,12 @@ func (c *TautulliClient) GetWatchHistory(ratingKey string) (int, error) {
 }
 
 func (c *TautulliClient) GetTopWatched(count int) ([]map[string]interface{}, error) {
-	url := fmt.Sprintf("%s/api/v2?apikey=%s&cmd=get_home_stats&count=%d", c.BaseURL, c.APIKey, count)
-	resp, err := c.HTTP.Get(url)
+	params := url.Values{}
+	params.Set("apikey", c.APIKey)
+	params.Set("cmd", "get_home_stats")
+	params.Set("count", fmt.Sprintf("%d", count))
+	fullURL := c.BaseURL + "/api/v2?" + params.Encode()
+	resp, err := c.HTTP.Get(fullURL)
 	if err != nil {
 		return nil, err
 	}
@@ -196,7 +208,7 @@ func (c *TautulliClient) GetTopWatched(count int) ([]map[string]interface{}, err
 	if !ok {
 		return nil, fmt.Errorf("data field is not a slice")
 	}
-	
+
 	items := []map[string]interface{}{}
 	for _, stat := range data {
 		statMap, ok := stat.(map[string]interface{})
@@ -227,8 +239,12 @@ func (c *TautulliClient) GetTopWatched(count int) ([]map[string]interface{}, err
 }
 
 func (c *TautulliClient) GetTopGenres(count int) ([]string, error) {
-	url := fmt.Sprintf("%s/api/v2?apikey=%s&cmd=get_home_stats&count=%d", c.BaseURL, c.APIKey, count)
-	resp, err := c.HTTP.Get(url)
+	params := url.Values{}
+	params.Set("apikey", c.APIKey)
+	params.Set("cmd", "get_home_stats")
+	params.Set("count", fmt.Sprintf("%d", count))
+	fullURL := c.BaseURL + "/api/v2?" + params.Encode()
+	resp, err := c.HTTP.Get(fullURL)
 	if err != nil {
 		return nil, err
 	}

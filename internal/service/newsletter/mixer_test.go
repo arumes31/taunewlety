@@ -21,7 +21,7 @@ func TestMixRecommendations(t *testing.T) {
 		t.Fatalf("failed to connect database: %v", err)
 	}
 	_ = db.AutoMigrate(&models.Blacklist{})
-	database.DB = db
+	database.SetDB(db)
 
 	tests := []struct {
 		name         string
@@ -83,13 +83,27 @@ func TestMixRecommendations(t *testing.T) {
 					foundKeys[fmt.Sprintf("%v", c.Item["rating_key"])] = true
 				}
 
-				if !foundKeys["1"] { t.Error("High Rated item missing") }
-				if !foundKeys["2"] { t.Error("Trending item missing") }
-				if !foundKeys["3"] { t.Error("Genre Match item missing") }
-				if !foundKeys["4"] { t.Error("Fresh item missing") }
-				if foundKeys["5"] { t.Error("Blacklisted item present") }
-				if !foundKeys["6"] { t.Error("Expired blacklist item missing") }
-				if !foundKeys["99"] { t.Error("Surprise item missing") }
+				if !foundKeys["1"] {
+					t.Error("High Rated item missing")
+				}
+				if !foundKeys["2"] {
+					t.Error("Trending item missing")
+				}
+				if !foundKeys["3"] {
+					t.Error("Genre Match item missing")
+				}
+				if !foundKeys["4"] {
+					t.Error("Fresh item missing")
+				}
+				if foundKeys["5"] {
+					t.Error("Blacklisted item present")
+				}
+				if !foundKeys["6"] {
+					t.Error("Expired blacklist item missing")
+				}
+				if !foundKeys["99"] {
+					t.Error("Surprise item missing")
+				}
 			},
 		},
 		{
@@ -190,11 +204,11 @@ func TestMixRecommendations(t *testing.T) {
 			if tt.setupMock != nil {
 				tt.setupMock(m)
 			}
-			
+
 			if tt.setupDB != nil {
-				tt.setupDB(database.DB)
+				tt.setupDB(database.GetDB())
 			} else {
-				database.DB.Exec("DELETE FROM blacklists")
+				database.GetDB().Exec("DELETE FROM blacklists")
 			}
 
 			s := &NewsletterService{

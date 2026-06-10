@@ -11,20 +11,20 @@ import (
 )
 
 type EditableConfigDTO struct {
-	TautulliURL    string `form:"tautulli_url"`
-	TautulliAPIKey string `form:"tautulli_api_key"`
-	OllamaURL      string `form:"ollama_url"`
-	OllamaModel    string `form:"ollama_model"`
-	SMTPHost       string `form:"smtp_host"`
-	SMTPPort       int    `form:"smtp_port"`
-	SMTPUser       string `form:"smtp_user"`
-	SMTPPass       string `form:"smtp_pass"`
-	SMTPSender     string `form:"smtp_sender"`
-	AppBaseURL     string `form:"app_base_url"`
-	DiscordWebhook string `form:"discord_webhook"`
-	TelegramBotTok string `form:"telegram_bot_token"`
-	TelegramChatID string `form:"telegram_chat_id"`
-	Language       string `form:"language"`
+	TautulliURL    string `form:"tautulli_url" binding:"required,url"`
+	TautulliAPIKey string `form:"tautulli_api_key" binding:"required"`
+	OllamaURL      string `form:"ollama_url" binding:"required,url"`
+	OllamaModel    string `form:"ollama_model" binding:"required"`
+	SMTPHost       string `form:"smtp_host" binding:"required"`
+	SMTPPort       int    `form:"smtp_port" binding:"required,min=1,max=65535"`
+	SMTPUser       string `form:"smtp_user" binding:"required"`
+	SMTPPass       string `form:"smtp_pass" binding:"required"`
+	SMTPSender     string `form:"smtp_sender" binding:"required,email"`
+	AppBaseURL     string `form:"app_base_url" binding:"required,url"`
+	DiscordWebhook string `form:"discord_webhook" binding:"omitempty,url"`
+	TelegramBotTok string `form:"telegram_bot_token" binding:"omitempty"`
+	TelegramChatID string `form:"telegram_chat_id" binding:"omitempty"`
+	Language       string `form:"language" binding:"required"`
 }
 
 func (h *Handler) DashboardGet(c *gin.Context) {
@@ -34,11 +34,11 @@ func (h *Handler) DashboardGet(c *gin.Context) {
 		config = &models.Config{}
 	}
 	var subscribers []models.Subscriber
-	database.DB.Find(&subscribers)
+	database.GetDB().Find(&subscribers)
 
 	var totalTokens int64
 	var nullTokens sql.NullInt64
-	err = database.DB.Model(&models.TokenUsage{}).Select("COALESCE(sum(total_tokens), 0)").Row().Scan(&nullTokens)
+	err = database.GetDB().Model(&models.TokenUsage{}).Select("COALESCE(sum(total_tokens), 0)").Row().Scan(&nullTokens)
 	if err != nil {
 		log.Printf("Error scanning total tokens: %v", err)
 	}
@@ -46,10 +46,14 @@ func (h *Handler) DashboardGet(c *gin.Context) {
 		totalTokens = nullTokens.Int64
 	}
 
+	// Retrieve CSRF token set by the middleware
+	csrfToken, _ := c.Get("csrf_token")
+
 	c.HTML(http.StatusOK, "index.html", gin.H{
 		"config":      config,
 		"subscribers": subscribers,
 		"totalTokens": totalTokens,
+		"csrf_token":  csrfToken,
 	})
 }
 

@@ -18,13 +18,15 @@ func (s *NewsletterService) GenerateAIContent(selection []Candidate) (*Generated
 	for _, c := range selection {
 		title := fmt.Sprintf("%v", c.Item["title"])
 		year := fmt.Sprintf("%v", c.Item["year"])
-		if year == "<nil>" || year == "0" { year = "N/A" }
-		
+		if year == "<nil>" || year == "0" {
+			year = "N/A"
+		}
+
 		genres := "Unknown"
 		if g, ok := c.Item["genres"]; ok && g != nil {
 			genres = fmt.Sprintf("%v", g)
 		}
-		
+
 		rating := "N/A"
 		if r, ok := c.Item["rating"]; ok && r != nil {
 			rating = fmt.Sprintf("%v", r)
@@ -62,7 +64,7 @@ Items:
 		return nil, err
 	}
 
-	database.DB.Create(&models.TokenUsage{
+	database.GetDB().Create(&models.TokenUsage{
 		PromptTokens:     promptTokens,
 		CompletionTokens: completionTokens,
 		TotalTokens:      promptTokens + completionTokens,
@@ -85,10 +87,7 @@ Items:
 
 	var result GeneratedContent
 	if err := json.Unmarshal([]byte(resp), &result); err != nil {
-		return &GeneratedContent{
-			Subject: "Your Daily Plex Update",
-			Body:    resp,
-		}, nil
+		return nil, fmt.Errorf("failed to parse AI response as JSON: %w", err)
 	}
 
 	return &result, nil

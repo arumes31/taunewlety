@@ -1,10 +1,12 @@
 package http
 
 import (
+	"html/template"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
+	"taunewlety/internal/platform/sanitize"
 
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-contrib/sessions/cookie"
@@ -52,7 +54,7 @@ func SetupRouter() *gin.Engine {
 		return nil
 	}
 	store := cookie.NewStore([]byte(sessionSecret))
-	
+
 	store.Options(sessions.Options{
 		Path:     "/",
 		HttpOnly: true,
@@ -68,7 +70,13 @@ func SetupRouter() *gin.Engine {
 	r.StaticFile("/favicon.ico", filepath.Join(staticDir, "favicon.svg"))
 	r.StaticFile("/favicon.svg", filepath.Join(staticDir, "favicon.svg"))
 
-	r.LoadHTMLGlob(filepath.Join(webDir, "template", "*"))
+	r.SetHTMLTemplate(template.Must(
+		template.New("").Funcs(template.FuncMap{
+			"sanitizeHTML": func(input string) template.HTML {
+				return template.HTML(sanitize.HTML(input))
+			},
+		}).ParseGlob(filepath.Join(webDir, "template", "*")),
+	))
 
 	RegisterHandlers(r)
 

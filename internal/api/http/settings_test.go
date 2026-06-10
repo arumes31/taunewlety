@@ -2,6 +2,7 @@ package http
 
 import (
 	"errors"
+	"html/template"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -12,6 +13,7 @@ import (
 
 	"taunewlety/internal/domain/models"
 	"taunewlety/internal/platform/database"
+	"taunewlety/internal/platform/sanitize"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -33,8 +35,8 @@ func TestSettingsHandlers_DashboardGet(t *testing.T) {
 			name: "Success",
 			setup: func() {
 				database.InitDB()
-				database.DB.Create(&models.Subscriber{Email: "test@example.com"})
-				database.DB.Create(&models.TokenUsage{TotalTokens: 100})
+				database.GetDB().Create(&models.Subscriber{Email: "test@example.com"})
+				database.GetDB().Create(&models.TokenUsage{TotalTokens: 100})
 			},
 			expectedStatus: http.StatusOK,
 			expectedBody:   "test@example.com",
@@ -43,7 +45,7 @@ func TestSettingsHandlers_DashboardGet(t *testing.T) {
 			name: "ScanError",
 			setup: func() {
 				database.InitDB()
-				_ = database.DB.Migrator().DropTable(&models.TokenUsage{})
+				_ = database.GetDB().Migrator().DropTable(&models.TokenUsage{})
 			},
 			expectedStatus: http.StatusOK,
 		},
@@ -51,7 +53,7 @@ func TestSettingsHandlers_DashboardGet(t *testing.T) {
 			name: "ConfigNil",
 			setup: func() {
 				database.InitDB()
-				database.DB.Exec("DELETE FROM configs")
+				database.GetDB().Exec("DELETE FROM configs")
 			},
 			expectedStatus: http.StatusOK,
 		},
@@ -62,7 +64,13 @@ func TestSettingsHandlers_DashboardGet(t *testing.T) {
 			tt.setup()
 			w := httptest.NewRecorder()
 			_, r := gin.CreateTestContext(w)
-			r.LoadHTMLGlob(filepath.Join(resolveWebDir(), "template", "*"))
+			r.SetHTMLTemplate(template.Must(
+				template.New("").Funcs(template.FuncMap{
+					"sanitizeHTML": func(input string) template.HTML {
+						return template.HTML(sanitize.HTML(input))
+					},
+				}).ParseGlob(filepath.Join(resolveWebDir(), "template", "*")),
+			))
 			h := &Handler{}
 			r.GET("/", h.DashboardGet)
 
@@ -99,19 +107,63 @@ func TestSettingsHandlers_SettingsPost(t *testing.T) {
 			expectedStatus: http.StatusBadRequest,
 		},
 		{
+			name: "ValidationError_InvalidURL",
+			formData: url.Values{
+				"tautulli_url":     {"not-a-url"},
+				"tautulli_api_key": {"testkey"},
+				"ollama_url":       {"http://localhost:11434"},
+				"ollama_model":     {"llama3"},
+				"smtp_host":        {"smtp.example.com"},
+				"smtp_port":        {"587"},
+				"smtp_user":        {"user@example.com"},
+				"smtp_pass":        {"password"},
+				"smtp_sender":      {"sender@example.com"},
+				"app_base_url":     {"http://localhost:8080"},
+				"language":         {"en_US"},
+			},
+			expectedStatus: http.StatusBadRequest,
+		},
+		{
+			name: "ValidationError_InvalidPort",
+			formData: url.Values{
+				"tautulli_url":     {"http://localhost:8181"},
+				"tautulli_api_key": {"testkey"},
+				"ollama_url":       {"http://localhost:11434"},
+				"ollama_model":     {"llama3"},
+				"smtp_host":        {"smtp.example.com"},
+				"smtp_port":        {"99999"},
+				"smtp_user":        {"user@example.com"},
+				"smtp_pass":        {"password"},
+				"smtp_sender":      {"sender@example.com"},
+				"app_base_url":     {"http://localhost:8080"},
+				"language":         {"en_US"},
+			},
+			expectedStatus: http.StatusBadRequest,
+		},
+		{
 			name: "SaveError",
 			setup: func() {
 				database.InitDB()
-				_ = database.DB.Callback().Create().Before("gorm:create").Register("fail_save", func(d *gorm.DB) {
+				_ = database.GetDB().Callback().Create().Before("gorm:create").Register("fail_save", func(d *gorm.DB) {
 					_ = d.AddError(errors.New("simulated save error"))
 				})
-				_ = database.DB.Callback().Update().Before("gorm:update").Register("fail_save", func(d *gorm.DB) {
+				_ = database.GetDB().Callback().Update().Before("gorm:update").Register("fail_save", func(d *gorm.DB) {
 					_ = d.AddError(errors.New("simulated save error"))
 				})
 
 			},
 			formData: url.Values{
-				"tautulli_url": {"http://localhost:8181"},
+				"tautulli_url":     {"http://localhost:8181"},
+				"tautulli_api_key": {"testkey"},
+				"ollama_url":       {"http://localhost:11434"},
+				"ollama_model":     {"llama3"},
+				"smtp_host":        {"smtp.example.com"},
+				"smtp_port":        {"587"},
+				"smtp_user":        {"user@example.com"},
+				"smtp_pass":        {"password"},
+				"smtp_sender":      {"sender@example.com"},
+				"app_base_url":     {"http://localhost:8080"},
+				"language":         {"en_US"},
 			},
 			expectedStatus: http.StatusInternalServerError,
 		},
@@ -119,11 +171,20 @@ func TestSettingsHandlers_SettingsPost(t *testing.T) {
 			name: "SuccessNewConfig",
 			setup: func() {
 				database.InitDB()
-				database.DB.Exec("DELETE FROM configs")
+				database.GetDB().Exec("DELETE FROM configs")
 			},
 			formData: url.Values{
-				"tautulli_url": {"http://new-config:8181"},
-				"smtp_port":    {"587"},
+				"tautulli_url":     {"http://new-config:8181"},
+				"tautulli_api_key": {"testkey"},
+				"ollama_url":       {"http://localhost:11434"},
+				"ollama_model":     {"llama3"},
+				"smtp_host":        {"smtp.example.com"},
+				"smtp_port":        {"587"},
+				"smtp_user":        {"user@example.com"},
+				"smtp_pass":        {"password"},
+				"smtp_sender":      {"sender@example.com"},
+				"app_base_url":     {"http://localhost:8080"},
+				"language":         {"en_US"},
 			},
 			expectedStatus: http.StatusFound,
 		},
@@ -133,7 +194,17 @@ func TestSettingsHandlers_SettingsPost(t *testing.T) {
 				database.InitDB()
 			},
 			formData: url.Values{
-				"tautulli_url": {"http://updated-config:8181"},
+				"tautulli_url":     {"http://updated-config:8181"},
+				"tautulli_api_key": {"testkey"},
+				"ollama_url":       {"http://localhost:11434"},
+				"ollama_model":     {"llama3"},
+				"smtp_host":        {"smtp.example.com"},
+				"smtp_port":        {"587"},
+				"smtp_user":        {"user@example.com"},
+				"smtp_pass":        {"password"},
+				"smtp_sender":      {"sender@example.com"},
+				"app_base_url":     {"http://localhost:8080"},
+				"language":         {"en_US"},
 			},
 			expectedStatus: http.StatusFound,
 		},

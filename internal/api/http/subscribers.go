@@ -27,7 +27,7 @@ func (h *Handler) SubscriberAdd(c *gin.Context) {
 
 	// Check if already exists to avoid duplicates
 	var count int64
-	err = database.DB.Model(&models.Subscriber{}).Where("email = ?", email).Count(&count).Error
+	err = database.GetDB().Model(&models.Subscriber{}).Where("email = ?", email).Count(&count).Error
 	if err != nil {
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Database error checking subscriber existence"})
 		return
@@ -37,7 +37,7 @@ func (h *Handler) SubscriberAdd(c *gin.Context) {
 		return
 	}
 
-	res := database.DB.Create(&models.Subscriber{Email: email})
+	res := database.GetDB().Create(&models.Subscriber{Email: email})
 	if res.Error != nil {
 		errMsg := res.Error.Error()
 		if strings.Contains(errMsg, "UNIQUE constraint") || strings.Contains(errMsg, "duplicate key") {
@@ -66,7 +66,7 @@ func (h *Handler) SubscriberDelete(c *gin.Context) {
 
 	// Hard-delete so the unique email index is freed and the address can be
 	// added again later (a soft delete would block re-adding the same email).
-	res := database.DB.Unscoped().Delete(&models.Subscriber{}, id)
+	res := database.GetDB().Unscoped().Delete(&models.Subscriber{}, id)
 	if res.Error != nil {
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete subscriber: " + res.Error.Error()})
 		return

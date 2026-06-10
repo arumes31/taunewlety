@@ -3,6 +3,7 @@ package http
 import (
 	"bufio"
 	"encoding/json"
+	"html/template"
 	"log"
 	"net"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"strings"
 	"taunewlety/internal/platform/clients"
 	"taunewlety/internal/platform/database"
+	"taunewlety/internal/platform/sanitize"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -110,7 +112,7 @@ func TestNewsletterHandlers(t *testing.T) {
 				name: "ConfigNil",
 				setupDB: func() {
 					database.InitDB()
-					database.DB.Exec("DELETE FROM configs")
+					database.GetDB().Exec("DELETE FROM configs")
 				},
 				expectedStatus: http.StatusBadRequest,
 				expectedBody:   "Configure settings first",
@@ -170,7 +172,13 @@ func TestNewsletterHandlers(t *testing.T) {
 
 				h := NewHandler()
 				r := gin.New()
-				r.LoadHTMLGlob(filepath.Join(resolveWebDir(), "template", "*"))
+				r.SetHTMLTemplate(template.Must(
+					template.New("").Funcs(template.FuncMap{
+						"sanitizeHTML": func(input string) template.HTML {
+							return template.HTML(sanitize.HTML(input))
+						},
+					}).ParseGlob(filepath.Join(resolveWebDir(), "template", "*")),
+				))
 				r.GET("/preview", h.NewsletterPreview)
 
 				w := httptest.NewRecorder()
@@ -200,7 +208,7 @@ func TestNewsletterHandlers(t *testing.T) {
 				name: "ConfigNil",
 				setupDB: func() {
 					database.InitDB()
-					database.DB.Exec("DELETE FROM configs")
+					database.GetDB().Exec("DELETE FROM configs")
 				},
 				expectedStatus: http.StatusBadRequest,
 				expectedBody:   "Configure settings first",
@@ -256,8 +264,11 @@ func TestNewsletterHandlers(t *testing.T) {
 						_ = json.NewEncoder(w).Encode(payload)
 					}
 				},
-				smtpFail:       true,
-				expectedStatus: http.StatusInternalServerError,
+				smtpFail: true,
+				// SMTP errors are now handled asynchronously (goroutines), so the
+				// handler returns 200 immediately even if SMTP delivery fails.
+				expectedStatus: http.StatusOK,
+				expectedBody:   "Sent",
 			},
 			{
 				name: "Success",
@@ -346,7 +357,7 @@ func TestNewsletterHandlers(t *testing.T) {
 		os.Setenv("DB_PATH", ":memory:")
 		defer os.Unsetenv("DB_PATH")
 		database.InitDB()
-		sqlDB, _ := database.DB.DB()
+		sqlDB, _ := database.GetDB().DB()
 		sqlDB.Close()
 
 		h := NewHandler()

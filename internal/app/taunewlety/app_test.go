@@ -276,7 +276,7 @@ func TestApp_Scheduler(t *testing.T) {
 				setup: func(t *testing.T) (*httptest.Server, *mockSMTPServer) {
 					database.InitDB()
 
-					database.DB.Exec("DELETE FROM configs")
+					database.GetDB().Exec("DELETE FROM configs")
 					return nil, nil
 				},
 			},
@@ -326,8 +326,8 @@ func TestApp_Scheduler(t *testing.T) {
 					config.SMTPHost = smtpAddr.IP.String()
 					config.SMTPPort = smtpAddr.Port
 					_ = database.SaveConfig(config)
-					database.DB.Create(&models.Subscriber{Email: "sub@example.com", Active: true})
-					database.DB.Create(&models.Subscriber{Email: "inactive@example.com", Active: false})
+					database.GetDB().Create(&models.Subscriber{Email: "sub@example.com", Active: true})
+					database.GetDB().Create(&models.Subscriber{Email: "inactive@example.com", Active: false})
 
 					return ts, smtpSrv
 				},

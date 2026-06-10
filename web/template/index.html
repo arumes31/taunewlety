@@ -1,36 +1,184 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard - TauNewlety</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #f4f7f6; margin: 0; padding: 0; }
-        .sidebar { width: 250px; background: #343a40; color: white; height: 100vh; position: fixed; padding: 2rem 1rem; }
-        .sidebar h1 { font-size: 1.5rem; margin-bottom: 2rem; color: #fff; }
-        .sidebar-nav a { display: block; color: #adb5bd; text-decoration: none; padding: 0.75rem 1rem; border-radius: 4px; margin-bottom: 0.5rem; }
-        .sidebar-nav a:hover, .sidebar-nav a.active { background: #495057; color: white; }
-        .main-content { margin-left: 250px; padding: 2rem; }
-        .container { max-width: 1000px; margin: 0 auto; background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-        h2 { color: #333; margin-top: 0; }
-        .tab-content { display: none; }
-        .tab-content.active { display: block; }
-        .form-section { margin-bottom: 2rem; border-bottom: 1px solid #eee; padding-bottom: 1rem; }
-        .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
-        .form-group { margin-bottom: 1rem; }
-        label { display: block; margin-bottom: 0.5rem; color: #666; font-size: 0.9rem; }
-        input, select { width: 100%; padding: 0.6rem; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
-        .btn { padding: 0.75rem 1.5rem; border: none; border-radius: 4px; cursor: pointer; font-size: 1rem; text-decoration: none; display: inline-block; text-align: center; }
-        .btn-primary { background: #007bff; color: white; }
-        .btn-danger { background: #dc3545; color: white; }
-        .stat-card { background: #e9ecef; padding: 1.5rem; border-radius: 8px; text-align: center; }
-        .stat-value { font-size: 2rem; font-weight: bold; color: #007bff; }
-        table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
-        th, td { text-align: left; padding: 0.75rem; border-bottom: 1px solid #dee2e6; }
-        #live-log { background: #000; color: #00ff00; font-family: monospace; padding: 1rem; height: 200px; overflow-y: auto; border-radius: 4px; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: #f4f7f6;
+            margin: 0;
+            padding: 0;
+        }
+
+        .sidebar {
+            width: 250px;
+            background: #343a40;
+            color: white;
+            height: 100vh;
+            position: fixed;
+            padding: 2rem 1rem;
+        }
+
+        .sidebar h1 {
+            font-size: 1.5rem;
+            margin-bottom: 2rem;
+            color: #fff;
+        }
+
+        .sidebar-nav a {
+            display: block;
+            color: #adb5bd;
+            text-decoration: none;
+            padding: 0.75rem 1rem;
+            border-radius: 4px;
+            margin-bottom: 0.5rem;
+        }
+
+        .sidebar-nav a:hover,
+        .sidebar-nav a.active {
+            background: #495057;
+            color: white;
+        }
+
+        .logout-btn {
+            display: block;
+            color: #adb5bd;
+            text-decoration: none;
+            padding: 0.75rem 1rem;
+            border-radius: 4px;
+            margin-top: 1rem;
+            border: 1px solid #6c757d;
+            text-align: center;
+        }
+
+        .logout-btn:hover {
+            background: #dc3545;
+            color: white;
+            border-color: #dc3545;
+        }
+
+        .main-content {
+            margin-left: 250px;
+            padding: 2rem;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: white;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        h2 {
+            color: #333;
+            margin-top: 0;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .form-section {
+            margin-bottom: 2rem;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 1rem;
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+        }
+
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: #666;
+            font-size: 0.9rem;
+        }
+
+        input,
+        select {
+            width: 100%;
+            padding: 0.6rem;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+
+        .btn {
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 1rem;
+            text-decoration: none;
+            display: inline-block;
+            text-align: center;
+        }
+
+        .btn-primary {
+            background: #007bff;
+            color: white;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        .stat-card {
+            background: #e9ecef;
+            padding: 1.5rem;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #007bff;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+        }
+
+        th,
+        td {
+            text-align: left;
+            padding: 0.75rem;
+            border-bottom: 1px solid #dee2e6;
+        }
+
+        #live-log {
+            background: #000;
+            color: #00ff00;
+            font-family: monospace;
+            padding: 1rem;
+            height: 200px;
+            overflow-y: auto;
+            border-radius: 4px;
+        }
     </style>
 </head>
+
 <body>
     <div class="sidebar">
         <div style="text-align: center; margin-bottom: 2rem;">
@@ -40,110 +188,126 @@
             <a href="#" class="active" onclick="showTab('settings', event)">Settings</a>
             <a href="#" onclick="showTab('subscribers', event)">Subscribers</a>
             <a href="#" onclick="showTab('stats', event)">Stats & Logs</a>
+            <a href="/logout" class="logout-btn">Logout</a>
         </div>
     </div>
 
     <div class="main-content">
         <div id="settings" class="tab-content active container">
             <form action="/settings" method="POST">
+                <input type="hidden" name="csrf_token" value="{{.csrf_token}}">
                 <!-- (Settings fields remain same, adding new ones) -->
-            <div class="form-section">
-                <h2>Tautulli Configuration</h2>
-                <div class="form-grid">
-                    <div class="form-group">
-                        <label>Tautulli URL</label>
-                        <input type="text" name="tautulli_url" value="{{.config.TautulliURL}}" placeholder="http://tautulli:8181">
-                    </div>
-                    <div class="form-group">
-                        <label>Tautulli API Key</label>
-                        <input type="password" name="tautulli_api_key" value="{{.config.TautulliAPIKey}}">
-                    </div>
-                </div>
-            </div>
-
-            <div class="form-section">
-                <h2>Ollama Configuration</h2>
-                <div class="form-grid">
-                    <div class="form-group">
-                        <label>Ollama URL</label>
-                        <input type="text" name="ollama_url" value="{{.config.OllamaURL}}" placeholder="http://ollama:11434">
-                    </div>
-                    <div class="form-group">
-                        <label>Ollama Model</label>
-                        <input type="text" name="ollama_model" value="{{.config.OllamaModel}}" placeholder="llama3">
+                <div class="form-section">
+                    <h2>Tautulli Configuration</h2>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>Tautulli URL</label>
+                            <input type="text" name="tautulli_url" value="{{.config.TautulliURL}}"
+                                placeholder="http://tautulli:8181">
+                        </div>
+                        <div class="form-group">
+                            <label>Tautulli API Key</label>
+                            <input type="password" name="tautulli_api_key" value="{{.config.TautulliAPIKey}}">
+                        </div>
                     </div>
                 </div>
-            </div>
 
-            <div class="form-section">
-                <h2>SMTP Configuration</h2>
-                <div class="form-grid">
-                    <div class="form-group"><label>Host</label><input type="text" name="smtp_host" value="{{.config.SMTPHost}}"></div>
-                    <div class="form-group"><label>Port</label><input type="number" name="smtp_port" value="{{.config.SMTPPort}}"></div>
-                    <div class="form-group"><label>User</label><input type="text" name="smtp_user" value="{{.config.SMTPUser}}"></div>
-                    <div class="form-group"><label>Pass</label><input type="password" name="smtp_pass" value="{{.config.SMTPPass}}"></div>
-                    <div class="form-group"><label>Sender Email</label><input type="email" name="smtp_sender" value="{{.config.SMTPSender}}"></div>
-                </div>
-            </div>
-
-            <div class="form-section">
-                <h2>Application Settings</h2>
-                <div class="form-grid">
-                    <div class="form-group">
-                        <label>Application Base URL (e.g., http://your-ip:8080)</label>
-                        <input type="text" name="app_base_url" value="{{.config.AppBaseURL}}" placeholder="http://192.168.1.100:8080">
+                <div class="form-section">
+                    <h2>Ollama Configuration</h2>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>Ollama URL</label>
+                            <input type="text" name="ollama_url" value="{{.config.OllamaURL}}"
+                                placeholder="http://ollama:11434">
+                        </div>
+                        <div class="form-group">
+                            <label>Ollama Model</label>
+                            <input type="text" name="ollama_model" value="{{.config.OllamaModel}}" placeholder="llama3">
+                        </div>
                     </div>
                 </div>
-            </div>
 
-            <div class="form-section">
-                <h2>Notification Channels</h2>
-                <div class="form-grid">
-                    <div class="form-group">
-                        <label>Discord Webhook</label>
-                        <input type="text" name="discord_webhook" value="{{.config.DiscordWebhook}}">
-                    </div>
-                    <div class="form-group">
-                        <label>Telegram Bot Token</label>
-                        <input type="password" name="telegram_bot_token" value="{{.config.TelegramBotTok}}">
-                    </div>
-                    <div class="form-group">
-                        <label>Telegram Chat ID</label>
-                        <input type="text" name="telegram_chat_id" value="{{.config.TelegramChatID}}">
+                <div class="form-section">
+                    <h2>SMTP Configuration</h2>
+                    <div class="form-grid">
+                        <div class="form-group"><label>Host</label><input type="text" name="smtp_host"
+                                value="{{.config.SMTPHost}}"></div>
+                        <div class="form-group"><label>Port</label><input type="number" name="smtp_port"
+                                value="{{.config.SMTPPort}}"></div>
+                        <div class="form-group"><label>User</label><input type="text" name="smtp_user"
+                                value="{{.config.SMTPUser}}"></div>
+                        <div class="form-group"><label>Pass</label><input type="password" name="smtp_pass"
+                                value="{{.config.SMTPPass}}"></div>
+                        <div class="form-group"><label>Sender Email</label><input type="email" name="smtp_sender"
+                                value="{{.config.SMTPSender}}"></div>
                     </div>
                 </div>
-            </div>
 
-            <div class="form-section">
-                <h2>Newsletter Settings</h2>
-                <div class="form-grid">
-                    <div class="form-group">
-                        <label>Language</label>
-                        <select name="language" style="width: 100%; padding: 0.6rem; border: 1px solid #ddd; border-radius: 4px;">
-                            <option value="en_US" {{if eq .config.Language "en_US"}}selected{{end}}>English (US)</option>
-                            <option value="de_DE" {{if eq .config.Language "de_DE"}}selected{{end}}>German</option>
-                            <option value="fr_FR" {{if eq .config.Language "fr_FR"}}selected{{end}}>French</option>
-                            <option value="es_ES" {{if eq .config.Language "es_ES"}}selected{{end}}>Spanish</option>
-                            <option value="it_IT" {{if eq .config.Language "it_IT"}}selected{{end}}>Italian</option>
-                            <option value="nl_NL" {{if eq .config.Language "nl_NL"}}selected{{end}}>Dutch</option>
-                            <option value="pt_PT" {{if eq .config.Language "pt_PT"}}selected{{end}}>Portuguese</option>
-                        </select>
+                <div class="form-section">
+                    <h2>Application Settings</h2>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>Application Base URL (e.g., http://your-ip:8080)</label>
+                            <input type="text" name="app_base_url" value="{{.config.AppBaseURL}}"
+                                placeholder="http://192.168.1.100:8080">
+                        </div>
                     </div>
                 </div>
+
+                <div class="form-section">
+                    <h2>Notification Channels</h2>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>Discord Webhook</label>
+                            <input type="text" name="discord_webhook" value="{{.config.DiscordWebhook}}">
+                        </div>
+                        <div class="form-group">
+                            <label>Telegram Bot Token</label>
+                            <input type="password" name="telegram_bot_token" value="{{.config.TelegramBotTok}}">
+                        </div>
+                        <div class="form-group">
+                            <label>Telegram Chat ID</label>
+                            <input type="text" name="telegram_chat_id" value="{{.config.TelegramChatID}}">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-section">
+                    <h2>Newsletter Settings</h2>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>Language</label>
+                            <select name="language"
+                                style="width: 100%; padding: 0.6rem; border: 1px solid #ddd; border-radius: 4px;">
+                                <option value="en_US" {{if eq .config.Language "en_US" }}selected{{end}}>English (US)
+                                </option>
+                                <option value="de_DE" {{if eq .config.Language "de_DE" }}selected{{end}}>German</option>
+                                <option value="fr_FR" {{if eq .config.Language "fr_FR" }}selected{{end}}>French</option>
+                                <option value="es_ES" {{if eq .config.Language "es_ES" }}selected{{end}}>Spanish
+                                </option>
+                                <option value="it_IT" {{if eq .config.Language "it_IT" }}selected{{end}}>Italian
+                                </option>
+                                <option value="nl_NL" {{if eq .config.Language "nl_NL" }}selected{{end}}>Dutch</option>
+                                <option value="pt_PT" {{if eq .config.Language "pt_PT" }}selected{{end}}>Portuguese
+                                </option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn btn-primary">Save Settings</button>
+            </form>
+
+            <div class="actions">
+                <a href="/preview" class="btn btn-secondary" target="_blank">Preview Newsletter</a>
+                <button onclick="sendNow()" class="btn btn-success">Send Manual Newsletter</button>
             </div>
-
-            <button type="submit" class="btn btn-primary">Save Settings</button>
-        </form>
-
-        <div class="actions">
-            <a href="/preview" class="btn btn-secondary" target="_blank">Preview Newsletter</a>
-            <button onclick="sendNow()" class="btn btn-success">Send Manual Newsletter</button>
         </div>
-    </div>
 
         <div id="subscribers" class="tab-content container">
             <h2>Subscriber Management</h2>
             <form action="/subscribers" method="POST" style="margin-bottom: 2rem;">
+                <input type="hidden" name="csrf_token" value="{{.csrf_token}}">
                 <div class="form-grid">
                     <div class="form-group">
                         <label>Email Address</label>
@@ -171,6 +335,7 @@
                         <td>{{if .Active}}Active{{else}}Inactive{{end}}</td>
                         <td>
                             <form action="/subscribers/delete" method="POST" style="display:inline;">
+                                <input type="hidden" name="csrf_token" value="{{$.csrf_token}}">
                                 <input type="hidden" name="id" value="{{.ID}}">
                                 <button type="submit" class="btn btn-danger">Remove</button>
                             </form>
@@ -213,11 +378,17 @@
         }
 
         async function sendNow() {
-            if(!confirm("Send newsletter now?")) return;
-            const resp = await fetch('/send', { method: 'POST' });
-            if(resp.ok) alert("Newsletter sent successfully!");
+            if (!confirm("Send newsletter now?")) return;
+            // Get CSRF token from the settings form hidden input
+            const csrfToken = document.querySelector('input[name="csrf_token"]').value;
+            const resp = await fetch('/send', {
+                method: 'POST',
+                headers: { 'X-CSRF-Token': csrfToken }
+            });
+            if (resp.ok) alert("Newsletter sent successfully!");
             else alert("Error sending newsletter.");
         }
     </script>
 </body>
+
 </html>

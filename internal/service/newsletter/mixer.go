@@ -20,15 +20,15 @@ func (s *NewsletterService) MixRecommendations() ([]Candidate, error) {
 	}
 
 	topGenres, _ := s.Tautulli.GetTopGenres(5)
-	
+
 	// Collect rating keys to batch query watch history
 	ratingKeys := make([]string, len(candidates))
 	for i, item := range candidates {
 		ratingKeys[i] = fmt.Sprintf("%v", item["rating_key"])
 	}
-	
+
 	watchCounts, _ := s.Tautulli.GetWatchHistoryBatch(ratingKeys)
-	
+
 	var highRated []Candidate
 	var trending []Candidate
 	var genreMatch []Candidate
@@ -36,15 +36,15 @@ func (s *NewsletterService) MixRecommendations() ([]Candidate, error) {
 
 	for _, item := range candidates {
 		ratingKey := fmt.Sprintf("%v", item["rating_key"])
-		
+
 		var bl models.Blacklist
-		result := database.DB.Where("media_id = ? AND expires_at > ?", ratingKey, time.Now().Unix()).First(&bl)
+		result := database.GetDB().Where("media_id = ? AND expires_at > ?", ratingKey, time.Now().Unix()).First(&bl)
 		if result.Error == nil {
 			continue
 		}
 
 		var allTags []string
-		
+
 		ratingStr := fmt.Sprintf("%v", item["rating"])
 		var rating float64
 		_, _ = fmt.Sscanf(ratingStr, "%f", &rating)
@@ -92,7 +92,7 @@ func (s *NewsletterService) MixRecommendations() ([]Candidate, error) {
 
 	var finalSelection []Candidate
 	limit := 3
-	
+
 	appendLimited := func(list []Candidate, n int) {
 		count := 0
 		for _, c := range list {

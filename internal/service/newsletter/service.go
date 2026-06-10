@@ -59,13 +59,13 @@ func (s *NewsletterService) GenerateNewsletter() (string, string, error) {
 		mediaType := fmt.Sprintf("%v", c.Item["media_type"])
 		title := fmt.Sprintf("%v", c.Item["title"])
 		
-		database.DB.Create(&models.Blacklist{
-			MediaID:   ratingKey,
+		database.GetDB().Create(&models.Blacklist{
+			MediaID: ratingKey,
 			MediaType: mediaType,
 			ExpiresAt: time.Now().AddDate(0, 0, 7).Unix(),
 		})
 
-		database.DB.Create(&models.RecommendationStat{
+		database.GetDB().Create(&models.RecommendationStat{
 			MediaID: ratingKey,
 			Title:   title,
 			SentAt:  time.Now().Unix(),

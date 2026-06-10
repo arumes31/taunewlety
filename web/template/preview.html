@@ -14,7 +14,7 @@
     <div class="preview-container">
         <h3>Subject: {{.subject}}</h3>
         <hr>
-        {{.content}}
+        {{.content | sanitizeHTML}}
     </div>
 </body>
 </html>

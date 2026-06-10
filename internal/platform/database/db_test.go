@@ -16,12 +16,12 @@ func TestInitDB(t *testing.T) {
 	defer os.Unsetenv("DB_PATH")
 
 	// Backup and restore globals
-	oldDB := DB
+	oldDB := GetDB()
 	oldOpenDB := OpenDB
 	oldFatalf := logFatalf
 	oldPrintf := logPrintf
 	defer func() {
-		DB = oldDB
+		SetDB(oldDB)
 		OpenDB = oldOpenDB
 		logFatalf = oldFatalf
 		logPrintf = oldPrintf
@@ -36,12 +36,12 @@ func TestInitDB(t *testing.T) {
 
 		InitDB()
 
-		if DB == nil {
+		if GetDB() == nil {
 			t.Fatal("DB should not be nil")
 		}
 
 		var count int64
-		DB.Model(&models.Config{}).Count(&count)
+		GetDB().Model(&models.Config{}).Count(&count)
 		if count != 1 {
 			t.Errorf("expected 1 config, got %d", count)
 		}
@@ -62,7 +62,7 @@ func TestInitDB(t *testing.T) {
 		InitDB()
 
 		var count int64
-		DB.Model(&models.Config{}).Count(&count)
+		GetDB().Model(&models.Config{}).Count(&count)
 		if count != 1 {
 			t.Errorf("expected 1 config, got %d", count)
 		}
@@ -182,15 +182,15 @@ func TestInitDB(t *testing.T) {
 }
 
 func TestGetConfig(t *testing.T) {
-	oldDB := DB
-	defer func() { DB = oldDB }()
+	oldDB := GetDB()
+	defer func() { SetDB(oldDB) }()
 
 	t.Run("Success", func(t *testing.T) {
 		db, _ := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
-		DB = db
-		_ = DB.AutoMigrate(&models.Config{})
+		SetDB(db)
+		_ = GetDB().AutoMigrate(&models.Config{})
 
-		DB.Create(&models.Config{Language: "en"})
+		GetDB().Create(&models.Config{Language: "en"})
 
 		cfg, err := GetConfig()
 		if err != nil {
@@ -203,7 +203,7 @@ func TestGetConfig(t *testing.T) {
 
 	t.Run("Error", func(t *testing.T) {
 		db, _ := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
-		DB = db
+		SetDB(db)
 		// No migration, table doesn't exist
 		_, err := GetConfig()
 		if err == nil {
@@ -213,20 +213,20 @@ func TestGetConfig(t *testing.T) {
 }
 
 func TestSaveConfig(t *testing.T) {
-	oldDB := DB
-	defer func() { DB = oldDB }()
+	oldDB := GetDB()
+	defer func() { SetDB(oldDB) }()
 
 	t.Run("Create_Success", func(t *testing.T) {
 		db, _ := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
-		DB = db
-		_ = DB.AutoMigrate(&models.Config{})
+		SetDB(db)
+		_ = GetDB().AutoMigrate(&models.Config{})
 		err := SaveConfig(&models.Config{Language: "fr"})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
 		var cfg models.Config
-		DB.First(&cfg)
+		GetDB().First(&cfg)
 		if cfg.Language != "fr" {
 			t.Errorf("expected fr, got %s", cfg.Language)
 		}
@@ -234,10 +234,10 @@ func TestSaveConfig(t *testing.T) {
 
 	t.Run("Update_Success", func(t *testing.T) {
 		db, _ := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
-		DB = db
-		_ = DB.AutoMigrate(&models.Config{})
+		SetDB(db)
+		_ = GetDB().AutoMigrate(&models.Config{})
 
-		DB.Create(&models.Config{Language: "en"})
+		GetDB().Create(&models.Config{Language: "en"})
 
 		err := SaveConfig(&models.Config{Language: "es"})
 		if err != nil {
@@ -245,7 +245,7 @@ func TestSaveConfig(t *testing.T) {
 		}
 
 		var cfg models.Config
-		DB.First(&cfg)
+		GetDB().First(&cfg)
 		if cfg.Language != "es" {
 			t.Errorf("expected es, got %s", cfg.Language)
 		}
@@ -256,7 +256,7 @@ func TestSaveConfig(t *testing.T) {
 
 	t.Run("Count_Error", func(t *testing.T) {
 		db, _ := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
-		DB = db
+		SetDB(db)
 		// No table
 		err := SaveConfig(&models.Config{})
 		if err == nil {
@@ -266,8 +266,8 @@ func TestSaveConfig(t *testing.T) {
 
 	t.Run("Create_Error", func(t *testing.T) {
 		db, _ := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
-		DB = db
-		_ = DB.AutoMigrate(&models.Config{})
+		SetDB(db)
+		_ = GetDB().AutoMigrate(&models.Config{})
 
 		_ = db.Callback().Create().Before("gorm:create").Register("fail", func(d *gorm.DB) {
 			_ = d.AddError(errors.New("fail"))
@@ -282,12 +282,12 @@ func TestSaveConfig(t *testing.T) {
 
 	t.Run("Save_Error", func(t *testing.T) {
 		db, _ := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
-		DB = db
-		_ = DB.AutoMigrate(&models.Config{})
+		SetDB(db)
+		_ = GetDB().AutoMigrate(&models.Config{})
 
-		DB.Create(&models.Config{Language: "en"})
+		GetDB().Create(&models.Config{Language: "en"})
 
-		_ = DB.Callback().Update().Before("gorm:update").Register("fail", func(d *gorm.DB) {
+		_ = db.Callback().Update().Before("gorm:update").Register("fail", func(d *gorm.DB) {
 			_ = d.AddError(errors.New("fail"))
 
 		})

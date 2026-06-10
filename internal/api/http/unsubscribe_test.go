@@ -34,7 +34,7 @@ func TestUnsubscribeHandlers(t *testing.T) {
 	defer os.Unsetenv("SESSION_SECRET")
 
 	// Pre-create a subscriber
-	database.DB.Create(&models.Subscriber{Email: "test@example.com"})
+	database.GetDB().Create(&models.Subscriber{Email: "test@example.com"})
 
 	gin.SetMode(gin.TestMode)
 	r := SetupRouter()
@@ -137,7 +137,7 @@ func TestUnsubscribeHandlers(t *testing.T) {
 
 	// Verify deleted from DB
 	var count int64
-	database.DB.Model(&models.Subscriber{}).Where("email = ?", "test@example.com").Count(&count)
+	database.GetDB().Model(&models.Subscriber{}).Where("email = ?", "test@example.com").Count(&count)
 	if count != 0 {
 		t.Error("expected subscriber to be deleted from DB")
 	}
@@ -205,14 +205,14 @@ func TestUnsubscribePost_MissingCaptchaInSession(t *testing.T) {
 	database.InitDB()
 	gin.SetMode(gin.TestMode)
 	h := NewHandler()
-	
+
 	r := gin.New()
 	store := cookie.NewStore([]byte("secret"))
 	r.Use(sessions.Sessions("mysession", store))
-	
+
 	r.POST("/unsubscribe", func(c *gin.Context) {
 		session := sessions.Default(c)
-		session.Set("csrf_token_unsub", "valid-csrf")
+		session.Set("csrf_token", "valid-csrf")
 		session.Set("unsubscribe_email", "test@example.com")
 		_ = session.Save()
 		c.Next()
@@ -240,18 +240,18 @@ func TestUnsubscribePost_CaptchaStringAndDBError(t *testing.T) {
 	defer os.Unsetenv("DB_PATH")
 
 	database.InitDB()
-	database.DB.Create(&models.Subscriber{Email: "test@example.com"})
+	database.GetDB().Create(&models.Subscriber{Email: "test@example.com"})
 
 	gin.SetMode(gin.TestMode)
 	h := NewHandler()
-	
+
 	r := gin.New()
 	store := cookie.NewStore([]byte("secret"))
 	r.Use(sessions.Sessions("mysession", store))
-	
+
 	r.POST("/unsubscribe", func(c *gin.Context) {
 		session := sessions.Default(c)
-		session.Set("csrf_token_unsub", "valid-csrf")
+		session.Set("csrf_token", "valid-csrf")
 		session.Set("unsubscribe_email", "test@example.com")
 		if c.Query("type") == "float" {
 			session.Set("captcha_answer", float64(15.0))
@@ -277,7 +277,7 @@ func TestUnsubscribePost_CaptchaStringAndDBError(t *testing.T) {
 	}
 
 	// Test 1.5: float64 answer works
-	database.DB.Create(&models.Subscriber{Email: "test@example.com"})
+	database.GetDB().Create(&models.Subscriber{Email: "test@example.com"})
 	w15 := httptest.NewRecorder()
 	req15, _ := http.NewRequest(http.MethodPost, "/unsubscribe?type=float", strings.NewReader(form1.Encode()))
 	req15.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -288,8 +288,8 @@ func TestUnsubscribePost_CaptchaStringAndDBError(t *testing.T) {
 	}
 
 	// Test 2: Database delete failure
-	database.DB.Create(&models.Subscriber{Email: "test@example.com"})
-	_ = database.DB.Callback().Delete().Before("gorm:delete").Register("fail_subscriber_delete", func(d *gorm.DB) {
+	database.GetDB().Create(&models.Subscriber{Email: "test@example.com"})
+	_ = database.GetDB().Callback().Delete().Before("gorm:delete").Register("fail_subscriber_delete", func(d *gorm.DB) {
 		_ = d.AddError(fmt.Errorf("simulated subscriber delete error"))
 	})
 	w2 := httptest.NewRecorder()
@@ -337,7 +337,7 @@ func TestUnsubscribePost_EdgeCases(t *testing.T) {
 		{
 			name: "Invalid CSRF Type in Session",
 			setupSession: func(s sessions.Session) {
-				s.Set("csrf_token_unsub", 123) // Should be string
+				s.Set("csrf_token", 123) // Should be string
 			},
 			csrfInput:      "some-token",
 			expectedStatus: http.StatusForbidden,
@@ -346,7 +346,7 @@ func TestUnsubscribePost_EdgeCases(t *testing.T) {
 		{
 			name: "Unsupported Captcha Answer Type",
 			setupSession: func(s sessions.Session) {
-				s.Set("csrf_token_unsub", "valid-csrf")
+				s.Set("csrf_token", "valid-csrf")
 				s.Set("unsubscribe_email", "test@example.com")
 				s.Set("captcha_answer", true) // bool not supported
 			},
@@ -358,7 +358,7 @@ func TestUnsubscribePost_EdgeCases(t *testing.T) {
 		{
 			name: "Non-numeric Captcha Answer String in Session",
 			setupSession: func(s sessions.Session) {
-				s.Set("csrf_token_unsub", "valid-csrf")
+				s.Set("csrf_token", "valid-csrf")
 				s.Set("unsubscribe_email", "test@example.com")
 				s.Set("captcha_answer", "abc") // invalid numeric string
 			},

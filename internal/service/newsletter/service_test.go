@@ -113,9 +113,8 @@ func TestNewsletterService_GenerateNewsletter(t *testing.T) {
 					return `invalid json`, 100, 100, nil
 				},
 			},
-			wantSubject: "Your Daily Plex Update",
-			wantBody:    "invalid json",
-			wantErr:     false,
+			wantErr:     true,
+			errContains: "failed to parse AI response as JSON",
 		},
 	}
 
@@ -149,13 +148,13 @@ func TestNewsletterService_GenerateNewsletter(t *testing.T) {
 
 			if tt.checkBlacklist {
 				var bls []models.Blacklist
-				database.DB.Find(&bls)
+				database.GetDB().Find(&bls)
 				if len(bls) == 0 {
 					t.Errorf("expected blacklist items to be created")
 				}
 				// Clean up for next test case
-				database.DB.Exec("DELETE FROM blacklists")
-				database.DB.Exec("DELETE FROM recommendation_stats")
+				database.GetDB().Exec("DELETE FROM blacklists")
+				database.GetDB().Exec("DELETE FROM recommendation_stats")
 			}
 		})
 	}

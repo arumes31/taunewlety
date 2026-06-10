@@ -1,6 +1,7 @@
 package http
 
 import (
+	"html/template"
 	"log"
 	"net/http"
 	"net/http/httptest"
@@ -8,6 +9,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"taunewlety/internal/platform/sanitize"
 	"testing"
 
 	"github.com/gin-contrib/sessions"
@@ -219,7 +221,13 @@ func TestAuthHandlers_SessionSaveFailure(t *testing.T) {
 	r := gin.New()
 	store := cookie.NewStore([]byte("secret"))
 	r.Use(sessions.Sessions("mysession", store))
-	r.LoadHTMLGlob("web/template/*")
+	r.SetHTMLTemplate(template.Must(
+		template.New("").Funcs(template.FuncMap{
+			"sanitizeHTML": func(input string) template.HTML {
+				return template.HTML(sanitize.HTML(input))
+			},
+		}).ParseGlob("web/template/*"),
+	))
 
 	handler := NewHandler()
 

@@ -45,7 +45,7 @@ func TestSubscriberAdd(t *testing.T) {
 			name:  "Database Error Checking Existence",
 			email: "test@example.com",
 			setupMock: func() {
-				_ = database.DB.Callback().Query().Before("gorm:query").Register("fail_existence", func(d *gorm.DB) {
+				_ = database.GetDB().Callback().Query().Before("gorm:query").Register("fail_existence", func(d *gorm.DB) {
 					_ = d.AddError(errors.New("simulated existence error"))
 				})
 
@@ -57,7 +57,7 @@ func TestSubscriberAdd(t *testing.T) {
 			name:  "Subscriber Already Exists",
 			email: "existing@example.com",
 			setupMock: func() {
-				database.DB.Create(&models.Subscriber{Email: "existing@example.com"})
+				database.GetDB().Create(&models.Subscriber{Email: "existing@example.com"})
 			},
 			expectedStatus: http.StatusConflict,
 			expectedBody:   "Subscriber with this email already exists",
@@ -66,7 +66,7 @@ func TestSubscriberAdd(t *testing.T) {
 			name:  "Database Error on Create",
 			email: "new@example.com",
 			setupMock: func() {
-				_ = database.DB.Callback().Create().Before("gorm:create").Register("fail_create", func(d *gorm.DB) {
+				_ = database.GetDB().Callback().Create().Before("gorm:create").Register("fail_create", func(d *gorm.DB) {
 					_ = d.AddError(errors.New("simulated create error"))
 				})
 
@@ -145,7 +145,7 @@ func TestSubscribersHandlers(t *testing.T) {
 			name: "Database Error on Delete",
 			id:   "1",
 			setupMock: func() {
-				_ = database.DB.Callback().Delete().Before("gorm:delete").Register("fail_delete", func(d *gorm.DB) {
+				_ = database.GetDB().Callback().Delete().Before("gorm:delete").Register("fail_delete", func(d *gorm.DB) {
 					_ = d.AddError(errors.New("simulated delete error"))
 				})
 
@@ -163,7 +163,7 @@ func TestSubscribersHandlers(t *testing.T) {
 			name: "Success",
 			id:   "1",
 			setupMock: func() {
-				database.DB.Create(&models.Subscriber{Email: "to-delete@example.com"})
+				database.GetDB().Create(&models.Subscriber{Email: "to-delete@example.com"})
 			},
 			expectedStatus: http.StatusFound,
 		},

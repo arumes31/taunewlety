@@ -1,33 +1,13 @@
 package http
 
 import (
-	"crypto/rand"
 	"crypto/subtle"
-	"encoding/hex"
 	"net/http"
 	"os"
 
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 )
-
-func generateCSRFToken() (string, error) {
-	b := make([]byte, 16)
-	if _, err := rand.Read(b); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(b), nil
-}
-
-func generateAndStoreCSRF(session sessions.Session) (string, error) {
-	token, err := generateCSRFToken()
-	if err != nil {
-		return "", err
-	}
-	session.Set("csrf_token", token)
-	_ = session.Save()
-	return token, nil
-}
 
 func (h *Handler) LoginGet(c *gin.Context) {
 	session := sessions.Default(c)
@@ -44,10 +24,12 @@ func (h *Handler) LoginGet(c *gin.Context) {
 func (h *Handler) LoginPost(c *gin.Context) {
 	session := sessions.Default(c)
 
-	// CSRF validation
+	// CSRF validation (login has its own CSRF handling since there is
+	// no authenticated session yet — the middleware is not applied here)
 	csrfInput := c.PostForm("csrf_token")
 	csrfSession := session.Get("csrf_token")
-	if csrfSession == nil || csrfInput == "" || csrfInput != csrfSession.(string) {
+	csrfStr, ok := csrfSession.(string)
+	if csrfSession == nil || !ok || csrfInput == "" || csrfInput != csrfStr {
 		token, err := generateAndStoreCSRF(session)
 		if err != nil {
 			c.String(http.StatusInternalServerError, "Failed to generate CSRF token")
@@ -108,4 +90,25 @@ func (h *Handler) LoginPost(c *gin.Context) {
 			"csrfToken": token,
 		})
 	}
+}
+
+// LogoutGet clears the session and redirects to the login page.
+func (h *Handler) LogoutGet(c *gin.Context) {
+	session := sessions.Default(c)
+	session.Clear()
+	session.Options(sessions.Options{MaxAge: -1})
+	_ = session.Save()
+	c.Redirect(http.StatusFound, "/login")
+}
+
+// generateAndStoreCSRF is kept here for the login flow which does not
+// go through the centralized CSRF middleware (no authenticated session yet).
+func generateAndStoreCSRF(session sessions.Session) (string, error) {
+	token, err := generateCSRFToken()
+	if err != nil {
+		return "", err
+	}
+	session.Set("csrf_token", token)
+	_ = session.Save()
+	return token, nil
 }

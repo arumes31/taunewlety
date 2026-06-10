@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"strings"
+	"sync"
 	"taunewlety/internal/domain/models"
 	"time"
 
@@ -21,7 +22,10 @@ func escapeDSNValue(val string) string {
 }
 
 var (
-	DB     *gorm.DB
+	db *gorm.DB
+
+	mu sync.RWMutex
+
 	OpenDB = func() (*gorm.DB, error) {
 		dbType := os.Getenv("DB_TYPE")
 		if dbType == "postgres" || os.Getenv("DB_HOST") != "" {
@@ -38,7 +42,7 @@ var (
 			if port == "" {
 				port = "5432"
 			}
-			// sslmode: defaults to 'require' for security. 
+			// sslmode: defaults to 'require' for security.
 			// For local development without SSL, set DB_SSLMODE=disable.
 			sslmode := os.Getenv("DB_SSLMODE")
 			if sslmode == "" {
@@ -66,16 +70,35 @@ var (
 	logPrintf = log.Printf
 )
 
+// GetDB returns the global database instance, protected by a read lock.
+// Callers should use this instead of accessing the DB variable directly.
+func GetDB() *gorm.DB {
+	mu.RLock()
+	defer mu.RUnlock()
+	return db
+}
+
+// SetDB sets the global database instance, protected by a write lock.
+// This is primarily used for testing.
+func SetDB(newDB *gorm.DB) {
+	mu.Lock()
+	defer mu.Unlock()
+	db = newDB
+}
+
 func InitDB() {
+	mu.Lock()
+	defer mu.Unlock()
+
 	var err error
-	DB, err = OpenDB()
+	db, err = OpenDB()
 	if err != nil {
 		logFatalf("failed to connect database: %v", err)
 		return
 	}
 
 	// Best practice: Configure connection pool settings
-	sqlDB, err := DB.DB()
+	sqlDB, err := db.DB()
 	if err != nil {
 		logPrintf("failed to get underlying sql.DB for connection pool configuration: %v", err)
 	} else {
@@ -85,7 +108,7 @@ func InitDB() {
 	}
 
 	// Auto-migrate the schema
-	err = DB.AutoMigrate(&models.Config{}, &models.Blacklist{}, &models.Subscriber{}, &models.RecommendationStat{}, &models.TokenUsage{})
+	err = db.AutoMigrate(&models.Config{}, &models.Blacklist{}, &models.Subscriber{}, &models.RecommendationStat{}, &models.TokenUsage{})
 	if err != nil {
 		logFatalf("failed to migrate database: %v", err)
 		return
@@ -93,7 +116,7 @@ func InitDB() {
 
 	// Seed default config if empty
 	var count int64
-	result := DB.Model(&models.Config{}).Count(&count)
+	result := db.Model(&models.Config{}).Count(&count)
 	if result.Error != nil {
 		logPrintf("failed to count configurations: %v", result.Error)
 	} else if count == 0 {
@@ -103,7 +126,7 @@ func InitDB() {
 			Language:    "en_US",
 			RecCount:    10,
 		}
-		res := DB.Create(&defaultConfig)
+		res := db.Create(&defaultConfig)
 		if res.Error != nil {
 			logPrintf("failed to seed default configuration: %v", res.Error)
 		} else if res.RowsAffected == 0 {
@@ -114,7 +137,7 @@ func InitDB() {
 
 func GetConfig() (*models.Config, error) {
 	var config models.Config
-	result := DB.First(&config)
+	result := GetDB().First(&config)
 	if result.Error != nil {
 		return nil, result.Error
 	}
@@ -122,15 +145,16 @@ func GetConfig() (*models.Config, error) {
 }
 
 func SaveConfig(config *models.Config) error {
+	d := GetDB()
 	var count int64
-	r := DB.Model(&models.Config{}).Count(&count)
+	r := d.Model(&models.Config{}).Count(&count)
 	if r.Error != nil {
 		return r.Error
 	}
 	if count == 0 {
-		return DB.Create(config).Error
+		return d.Create(config).Error
 	}
 	// Assuming ID 1 for simplicity as there's only one config
 	config.ID = 1
-	return DB.Save(config).Error
+	return d.Save(config).Error
 }

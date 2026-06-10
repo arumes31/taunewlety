@@ -1,13 +1,14 @@
 package http
 
 import (
-	"github.com/gin-contrib/sessions"
-	"github.com/gin-gonic/gin"
 	"net/http"
 	"strconv"
 	"taunewlety/internal/domain/models"
 	"taunewlety/internal/platform/database"
 	"taunewlety/pkg"
+
+	"github.com/gin-contrib/sessions"
+	"github.com/gin-gonic/gin"
 )
 
 func (h *Handler) UnsubscribeGet(c *gin.Context) {
@@ -22,28 +23,41 @@ func (h *Handler) UnsubscribeGet(c *gin.Context) {
 	session.Set("captcha_answer", captcha.Answer)
 	session.Set("unsubscribe_email", email)
 
-	// Generate CSRF token for unsubscribe
-	csrfToken, err := generateCSRFToken()
-	if err != nil {
-		c.String(http.StatusInternalServerError, "Failed to generate CSRF token: %v", err)
-		return
+	// Use the CSRF token from the middleware (already stored in session
+	// and set in context by CSRFProtection). Fall back to generating one
+	// if the middleware was not applied (e.g. direct handler test).
+	csrfToken, _ := c.Get("csrf_token")
+	csrfStr, ok := csrfToken.(string)
+	if !ok || csrfStr == "" {
+		csrfStr, err = generateCSRFToken()
+		if err != nil {
+			c.String(http.StatusInternalServerError, "Failed to generate CSRF token: %v", err)
+			return
+		}
+		session.Set("csrf_token", csrfStr)
 	}
-	session.Set("csrf_token_unsub", csrfToken)
+
 	_ = session.Save()
 
 	c.HTML(http.StatusOK, "unsubscribe.html", gin.H{
-		"email":     email,
-		"question":  captcha.Question,
-		"CSRFToken": csrfToken,
+		"email":      email,
+		"question":   captcha.Question,
+		"csrf_token": csrfStr,
 	})
 }
 
 func (h *Handler) UnsubscribePost(c *gin.Context) {
 	session := sessions.Default(c)
 
-	// Verify CSRF
+	// Verify CSRF — the centralized middleware validates the token for
+	// POST requests on authorized routes. For the public unsubscribe
+	// endpoint (no middleware), we validate manually using the session
+	// key "csrf_token" set by the GET handler or middleware.
 	csrfInput := c.PostForm("csrf_token")
-	csrfSession := session.Get("csrf_token_unsub")
+	if csrfInput == "" {
+		csrfInput = c.GetHeader("X-CSRF-Token")
+	}
+	csrfSession := session.Get("csrf_token")
 	csrfSessionStr, ok := csrfSession.(string)
 	if !ok || csrfInput == "" || csrfInput != csrfSessionStr {
 		c.String(http.StatusForbidden, "Invalid CSRF token")
@@ -89,16 +103,16 @@ func (h *Handler) UnsubscribePost(c *gin.Context) {
 		return
 	}
 
-	// Remove captcha, CSRF, and email from session
+	// Remove captcha and email from session
 	session.Delete("captcha_answer")
-	session.Delete("csrf_token_unsub")
+	session.Delete("csrf_token")
 	session.Delete("unsubscribe_email")
 	_ = session.Save()
 
 	// Hard-delete so the unique email index is freed and the user can
 	// re-subscribe later (a soft delete would leave the row in place and
 	// cause a UNIQUE constraint failure on re-subscription).
-	res := database.DB.Unscoped().Where("email = ?", email).Delete(&models.Subscriber{})
+	res := database.GetDB().Unscoped().Where("email = ?", email).Delete(&models.Subscriber{})
 	if res.Error != nil {
 		c.String(http.StatusInternalServerError, "Failed to unsubscribe: "+res.Error.Error())
 		return
