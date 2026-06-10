@@ -27,7 +27,7 @@ func RegisterHandlers(r *gin.Engine) {
 	authorized.Use(CSRFProtection())
 	{
 		authorized.GET("/", h.DashboardGet)
-		authorized.GET("/logout", h.LogoutGet)
+		authorized.POST("/logout", h.LogoutPost)
 		authorized.POST("/settings", h.SettingsPost)
 		authorized.POST("/subscribers", h.SubscriberAdd)
 		authorized.POST("/subscribers/delete", h.SubscriberDelete)

@@ -19,18 +19,25 @@ func CSRFProtection() gin.HandlerFunc {
 		session := sessions.Default(c)
 		method := c.Request.Method
 
-		switch method {
-		case http.MethodGet, http.MethodHead, http.MethodOptions:
-			token, err := generateCSRFToken()
+		// Ensure a CSRF token exists for the session
+		csrfSession := session.Get("csrf_token")
+		var token string
+		if csrfSession == nil {
+			newToken, err := generateCSRFToken()
 			if err != nil {
 				c.String(http.StatusInternalServerError, "Failed to generate CSRF token")
 				c.Abort()
 				return
 			}
-			session.Set("csrf_token", token)
+			session.Set("csrf_token", newToken)
 			_ = session.Save()
-			c.Set("csrf_token", token)
+			token = newToken
+		} else {
+			token = csrfSession.(string)
+		}
+		c.Set("csrf_token", token)
 
+		switch method {
 		case http.MethodPost, http.MethodPut, http.MethodDelete:
 			// Read token from form field or header
 			csrfInput := c.PostForm("csrf_token")
@@ -38,19 +45,10 @@ func CSRFProtection() gin.HandlerFunc {
 				csrfInput = c.GetHeader("X-CSRF-Token")
 			}
 
-			csrfSession := session.Get("csrf_token")
-			csrfStr, ok := csrfSession.(string)
-			if csrfSession == nil || !ok || csrfInput == "" || csrfInput != csrfStr {
+			if csrfInput == "" || csrfInput != token {
 				c.String(http.StatusForbidden, "Invalid CSRF token")
 				c.Abort()
 				return
-			}
-			// Generate a new token for the next request
-			newToken, err := generateCSRFToken()
-			if err == nil {
-				session.Set("csrf_token", newToken)
-				_ = session.Save()
-				c.Set("csrf_token", newToken)
 			}
 		}
 

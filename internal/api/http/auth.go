@@ -92,8 +92,8 @@ func (h *Handler) LoginPost(c *gin.Context) {
 	}
 }
 
-// LogoutGet clears the session and redirects to the login page.
-func (h *Handler) LogoutGet(c *gin.Context) {
+// LogoutPost clears the session and redirects to the login page.
+func (h *Handler) LogoutPost(c *gin.Context) {
 	session := sessions.Default(c)
 	session.Clear()
 	session.Options(sessions.Options{MaxAge: -1})
