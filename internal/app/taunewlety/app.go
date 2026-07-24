@@ -3,8 +3,10 @@ package taunewlety
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
+	"strings"
 	api_http "taunewlety/internal/api/http"
 	"taunewlety/internal/domain/models"
 	"taunewlety/internal/platform/database"
@@ -17,7 +19,6 @@ import (
 )
 
 var Version = "v0.1-dev"
-var cronSchedule = "0 9 * * *"
 
 var loggerFatal = func(logger *zap.Logger, msg string, fields ...zap.Field) {
 	logger.Fatal(msg, fields...)
@@ -51,8 +52,16 @@ func (a *App) Run(ctx context.Context) error {
 		a.logger.Error("APP_USER and APP_PASS environment variables are required but were not set")
 		return errors.New("APP_USER and APP_PASS environment variables are required")
 	}
-	database.InitDB()
-	r := api_http.SetupRouter()
+	db, err := database.InitDB()
+	if err != nil {
+		a.logger.Error("Failed to initialize database", zap.Error(err))
+		return fmt.Errorf("failed to initialize database: %w", err)
+	}
+	r, err := api_http.SetupRouter(db, a.logger)
+	if err != nil {
+		a.logger.Error("Failed to setup router", zap.Error(err))
+		return fmt.Errorf("failed to setup router: %w", err)
+	}
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -63,18 +72,35 @@ func (a *App) Run(ctx context.Context) error {
 		Addr:              ":" + port,
 		Handler:           r,
 		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       60 * time.Second,
 	}
 
 	a.setupScheduler()
 	a.cron.Start()
 
+	tlsCert := os.Getenv("TLS_CERT")
+	tlsKey := os.Getenv("TLS_KEY")
+
 	go func() {
-		if err := a.srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			loggerFatal(a.logger, "listen", zap.Error(err))
+		if tlsCert != "" && tlsKey != "" {
+			a.logger.Info("Starting server with TLS", zap.String("port", port))
+			if err := a.srv.ListenAndServeTLS(tlsCert, tlsKey); err != nil && err != http.ErrServerClosed {
+				loggerFatal(a.logger, "listen_tls", zap.Error(err))
+			}
+		} else {
+			if err := a.srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				loggerFatal(a.logger, "listen", zap.Error(err))
+			}
 		}
 	}()
 
-	a.logger.Info("TauNewlety started", zap.String("version", Version), zap.String("port", port))
+	proto := "http"
+	if tlsCert != "" && tlsKey != "" {
+		proto = "https"
+	}
+	a.logger.Info("TauNewlety started", zap.String("version", Version), zap.String("port", port), zap.String("protocol", proto))
 
 	// Wait for context cancellation
 	<-ctx.Done()
@@ -82,15 +108,46 @@ func (a *App) Run(ctx context.Context) error {
 	return nil
 }
 
+// buildCronSchedule converts a "HH:MM" time string into a cron expression
+// that runs daily at the specified time. Returns a default of "0 9 * * *"
+// if the input is invalid or empty.
+func buildCronSchedule(newsletterTime string) string {
+	if newsletterTime == "" {
+		return "0 9 * * *"
+	}
+
+	parts := strings.SplitN(newsletterTime, ":", 2)
+	if len(parts) != 2 {
+		return "0 9 * * *"
+	}
+
+	hour := parts[0]
+	minute := parts[1]
+
+	// Basic validation: hour 00-23, minute 00-59
+	if len(hour) < 1 || len(hour) > 2 || len(minute) != 2 {
+		return "0 9 * * *"
+	}
+
+	return fmt.Sprintf("%s %s * * *", minute, hour)
+}
+
 func (a *App) setupScheduler() {
-	_, err := a.cron.AddFunc(cronSchedule, func() {
+	// Load the newsletter time from the config; fall back to "09:00" if unavailable.
+	schedule := "0 9 * * *"
+	config, err := database.GetConfig()
+	if err == nil && config != nil && config.NewsletterTime != "" {
+		schedule = buildCronSchedule(config.NewsletterTime)
+	}
+
+	_, err = a.cron.AddFunc(schedule, func() {
 		config, err := database.GetConfig()
 		if err != nil {
 			a.logger.Error("Failed to load config for scheduled job", zap.Error(err))
 			return
 		}
 		if config != nil {
-			svc := newsletter.NewNewsletterService(config)
+			svc := newsletter.NewNewsletterService(database.GetDB(), config)
 			subject, body, err := svc.GenerateNewsletter()
 			if err != nil {
 				a.logger.Error("Scheduled generation failed", zap.Error(err))

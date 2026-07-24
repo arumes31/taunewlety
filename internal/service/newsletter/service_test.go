@@ -1,10 +1,12 @@
 package newsletter
 
 import (
+	"context"
 	"errors"
 	"os"
 	"strings"
 	"taunewlety/internal/domain/models"
+	"taunewlety/internal/platform/clients"
 	"taunewlety/internal/platform/database"
 	"testing"
 )
@@ -13,27 +15,30 @@ func TestNewsletterService_GenerateNewsletter(t *testing.T) {
 	os.Setenv("DB_PATH", ":memory:")
 	defer os.Unsetenv("DB_PATH")
 
-	database.InitDB()
+	db, err := database.InitDB()
+	if err != nil {
+		t.Fatalf("failed to init DB: %v", err)
+	}
 
 	tests := []struct {
-		name           string
-		mockTautulli   *mockTautulliClient
-		mockOllama     *mockOllamaClient
-		wantErr        bool
-		errContains    string
-		wantSubject    string
-		wantBody       string
+		name         string
+		mockTautulli *mockTautulliClient
+		mockOllama   *mockOllamaClient
+		wantErr      bool
+		errContains  string
+		wantSubject  string
+		wantBody     string
 		checkBlacklist bool
 	}{
 		{
 			name: "Successful newsletter generation",
 			mockTautulli: &mockTautulliClient{
-				GetRecentlyAddedFn: func(count int) ([]map[string]interface{}, error) {
-					return []map[string]interface{}{
+				GetRecentlyAddedFn: func(count int) ([]clients.RecentlyAddedItem, error) {
+					return []clients.RecentlyAddedItem{
 						{
-							"rating_key": "mov_1",
-							"title":      "Test Movie",
-							"media_type": "movie",
+							RatingKey: 1,
+							Title:     "Test Movie",
+							MediaType: "movie",
 						},
 					}, nil
 				},
@@ -42,20 +47,20 @@ func TestNewsletterService_GenerateNewsletter(t *testing.T) {
 				},
 			},
 			mockOllama: &mockOllamaClient{
-				GenerateFn: func(prompt string) (string, int, int, error) {
+				GenerateFn: func(ctx context.Context, prompt string) (string, int, int, error) {
 					return `{"subject": "Plex Subject", "body": "Plex Body"}`, 100, 100, nil
 				},
 			},
-			wantErr:        false,
-			wantSubject:    "Plex Subject",
-			wantBody:       "Plex Body",
+			wantErr:      false,
+			wantSubject:  "Plex Subject",
+			wantBody:     "Plex Body",
 			checkBlacklist: true,
 		},
 		{
 			name: "No recommendations available",
 			mockTautulli: &mockTautulliClient{
-				GetRecentlyAddedFn: func(count int) ([]map[string]interface{}, error) {
-					return []map[string]interface{}{}, nil
+				GetRecentlyAddedFn: func(count int) ([]clients.RecentlyAddedItem, error) {
+					return []clients.RecentlyAddedItem{}, nil
 				},
 				GetTopGenresFn: func(count int) ([]string, error) {
 					return []string{}, nil
@@ -67,7 +72,7 @@ func TestNewsletterService_GenerateNewsletter(t *testing.T) {
 		{
 			name: "Tautulli error during mix",
 			mockTautulli: &mockTautulliClient{
-				GetRecentlyAddedFn: func(count int) ([]map[string]interface{}, error) {
+				GetRecentlyAddedFn: func(count int) ([]clients.RecentlyAddedItem, error) {
 					return nil, errors.New("tautulli error")
 				},
 			},
@@ -77,18 +82,18 @@ func TestNewsletterService_GenerateNewsletter(t *testing.T) {
 		{
 			name: "Ollama error during generation",
 			mockTautulli: &mockTautulliClient{
-				GetRecentlyAddedFn: func(count int) ([]map[string]interface{}, error) {
-					return []map[string]interface{}{
+				GetRecentlyAddedFn: func(count int) ([]clients.RecentlyAddedItem, error) {
+					return []clients.RecentlyAddedItem{
 						{
-							"rating_key": "mov_1",
-							"title":      "Test Movie",
-							"media_type": "movie",
+							RatingKey: 1,
+							Title:     "Test Movie",
+							MediaType: "movie",
 						},
 					}, nil
 				},
 			},
 			mockOllama: &mockOllamaClient{
-				GenerateFn: func(prompt string) (string, int, int, error) {
+				GenerateFn: func(ctx context.Context, prompt string) (string, int, int, error) {
 					return "", 0, 0, errors.New("ollama error")
 				},
 			},
@@ -98,18 +103,18 @@ func TestNewsletterService_GenerateNewsletter(t *testing.T) {
 		{
 			name: "Malformed AI response",
 			mockTautulli: &mockTautulliClient{
-				GetRecentlyAddedFn: func(count int) ([]map[string]interface{}, error) {
-					return []map[string]interface{}{
+				GetRecentlyAddedFn: func(count int) ([]clients.RecentlyAddedItem, error) {
+					return []clients.RecentlyAddedItem{
 						{
-							"rating_key": "mov_1",
-							"title":      "Test Movie",
-							"media_type": "movie",
+							RatingKey: 1,
+							Title:     "Test Movie",
+							MediaType: "movie",
 						},
 					}, nil
 				},
 			},
 			mockOllama: &mockOllamaClient{
-				GenerateFn: func(prompt string) (string, int, int, error) {
+				GenerateFn: func(ctx context.Context, prompt string) (string, int, int, error) {
 					return `invalid json`, 100, 100, nil
 				},
 			},
@@ -121,6 +126,7 @@ func TestNewsletterService_GenerateNewsletter(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			svc := &NewsletterService{
+				DB:       db,
 				Tautulli: tt.mockTautulli,
 				Ollama:   tt.mockOllama,
 				Config:   &models.Config{},

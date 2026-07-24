@@ -16,6 +16,7 @@ import (
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
 
@@ -26,10 +27,19 @@ func (failReader) Read(p []byte) (n int, err error) {
 }
 
 func TestUnsubscribeHandlers(t *testing.T) {
+	// Override sendUnsubscribeEmail to prevent goroutine from accessing
+	// a stale DB when tests run in sequence.
+	originalSendEmail := sendUnsubscribeEmail
+	sendUnsubscribeEmail = func(email string) {}
+	defer func() { sendUnsubscribeEmail = originalSendEmail }()
+
 	os.Setenv("DB_PATH", ":memory:")
 	defer os.Unsetenv("DB_PATH")
 
-	database.InitDB()
+	db, err := database.InitDB()
+	if err != nil {
+		t.Fatalf("failed to init DB: %v", err)
+	}
 	os.Setenv("SESSION_SECRET", "test-secret-123")
 	defer os.Unsetenv("SESSION_SECRET")
 
@@ -37,7 +47,10 @@ func TestUnsubscribeHandlers(t *testing.T) {
 	database.GetDB().Create(&models.Subscriber{Email: "test@example.com"})
 
 	gin.SetMode(gin.TestMode)
-	r := SetupRouter()
+	r, routerErr := SetupRouter(db, zap.NewNop())
+	if routerErr != nil {
+		t.Fatalf("SetupRouter failed: %v", routerErr)
+	}
 
 	// 1. GET /unsubscribe
 	wGet := httptest.NewRecorder()
@@ -185,7 +198,8 @@ func TestUnsubscribeHandlers_CaptchaGenerationError(t *testing.T) {
 	defer func() { rand.Reader = oldReader }()
 
 	gin.SetMode(gin.TestMode)
-	h := NewHandler()
+	db, _ := database.InitDB()
+	h := NewHandler(db)
 	r := gin.New()
 	r.GET("/unsubscribe", h.UnsubscribeGet)
 
@@ -202,9 +216,9 @@ func TestUnsubscribePost_MissingCaptchaInSession(t *testing.T) {
 	os.Setenv("DB_PATH", ":memory:")
 	defer os.Unsetenv("DB_PATH")
 
-	database.InitDB()
+	db, _ := database.InitDB()
 	gin.SetMode(gin.TestMode)
-	h := NewHandler()
+	h := NewHandler(db)
 
 	r := gin.New()
 	store := cookie.NewStore([]byte("secret"))
@@ -236,14 +250,18 @@ func TestUnsubscribePost_MissingCaptchaInSession(t *testing.T) {
 }
 
 func TestUnsubscribePost_CaptchaStringAndDBError(t *testing.T) {
+	originalSendEmail := sendUnsubscribeEmail
+	sendUnsubscribeEmail = func(email string) {}
+	defer func() { sendUnsubscribeEmail = originalSendEmail }()
+
 	os.Setenv("DB_PATH", ":memory:")
 	defer os.Unsetenv("DB_PATH")
 
-	database.InitDB()
+	db, _ := database.InitDB()
 	database.GetDB().Create(&models.Subscriber{Email: "test@example.com"})
 
 	gin.SetMode(gin.TestMode)
-	h := NewHandler()
+	h := NewHandler(db)
 
 	r := gin.New()
 	store := cookie.NewStore([]byte("secret"))
@@ -306,12 +324,16 @@ func TestUnsubscribePost_CaptchaStringAndDBError(t *testing.T) {
 }
 
 func TestUnsubscribePost_EdgeCases(t *testing.T) {
+	originalSendEmail := sendUnsubscribeEmail
+	sendUnsubscribeEmail = func(email string) {}
+	defer func() { sendUnsubscribeEmail = originalSendEmail }()
+
 	os.Setenv("DB_PATH", ":memory:")
 	defer os.Unsetenv("DB_PATH")
 
-	database.InitDB()
+	db, _ := database.InitDB()
 	gin.SetMode(gin.TestMode)
-	h := NewHandler()
+	h := NewHandler(db)
 
 	r := gin.New()
 	store := cookie.NewStore([]byte("secret"))

@@ -2,6 +2,7 @@ package clients
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -32,21 +33,33 @@ type OllamaRequest struct {
 }
 
 type OllamaResponse struct {
-	Response           string `json:"response"`
-	PromptEvalCount    int    `json:"prompt_eval_count"`
-	EvalCount          int    `json:"eval_count"`
+	Response        string `json:"response"`
+	PromptEvalCount int    `json:"prompt_eval_count"`
+	EvalCount       int    `json:"eval_count"`
 }
 
-func (c *OllamaClient) Generate(prompt string) (string, int, int, error) {
+// Generate sends a prompt to the Ollama API and returns the response.
+// The ctx parameter allows cancellation when the HTTP handler's context
+// is cancelled (e.g., user closes the browser).
+func (c *OllamaClient) Generate(ctx context.Context, prompt string) (string, int, int, error) {
 	reqBody := OllamaRequest{
 		Model:  c.Model,
 		Prompt: prompt,
 		Stream: false,
 	}
 
-	jsonData, _ := json.Marshal(reqBody)
+	jsonData, err := json.Marshal(reqBody)
+	if err != nil {
+		return "", 0, 0, fmt.Errorf("failed to marshal request body: %w", err)
+	}
 
-	resp, err := c.HTTP.Post(fmt.Sprintf("%s/api/generate", c.BaseURL), "application/json", bytes.NewBuffer(jsonData))
+	req, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("%s/api/generate", c.BaseURL), bytes.NewBuffer(jsonData))
+	if err != nil {
+		return "", 0, 0, fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.HTTP.Do(req)
 	if err != nil {
 		return "", 0, 0, err
 	}

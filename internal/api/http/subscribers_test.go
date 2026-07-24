@@ -25,7 +25,7 @@ func TestSubscriberAdd(t *testing.T) {
 	tests := []struct {
 		name           string
 		email          string
-		setupMock      func()
+		setupMock      func(db *gorm.DB)
 		expectedStatus int
 		expectedBody   string
 	}{
@@ -44,11 +44,10 @@ func TestSubscriberAdd(t *testing.T) {
 		{
 			name:  "Database Error Checking Existence",
 			email: "test@example.com",
-			setupMock: func() {
+			setupMock: func(db *gorm.DB) {
 				_ = database.GetDB().Callback().Query().Before("gorm:query").Register("fail_existence", func(d *gorm.DB) {
 					_ = d.AddError(errors.New("simulated existence error"))
 				})
-
 			},
 			expectedStatus: http.StatusInternalServerError,
 			expectedBody:   "Database error checking subscriber existence",
@@ -56,7 +55,7 @@ func TestSubscriberAdd(t *testing.T) {
 		{
 			name:  "Subscriber Already Exists",
 			email: "existing@example.com",
-			setupMock: func() {
+			setupMock: func(db *gorm.DB) {
 				database.GetDB().Create(&models.Subscriber{Email: "existing@example.com"})
 			},
 			expectedStatus: http.StatusConflict,
@@ -65,11 +64,10 @@ func TestSubscriberAdd(t *testing.T) {
 		{
 			name:  "Database Error on Create",
 			email: "new@example.com",
-			setupMock: func() {
+			setupMock: func(db *gorm.DB) {
 				_ = database.GetDB().Callback().Create().Before("gorm:create").Register("fail_create", func(d *gorm.DB) {
 					_ = d.AddError(errors.New("simulated create error"))
 				})
-
 			},
 			expectedStatus: http.StatusInternalServerError,
 			expectedBody:   "Failed to add subscriber",
@@ -83,14 +81,14 @@ func TestSubscriberAdd(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			database.InitDB()
+			db, _ := database.InitDB()
 			if tt.setupMock != nil {
-				tt.setupMock()
+				tt.setupMock(db)
 			}
 
 			w := httptest.NewRecorder()
 			c, r := gin.CreateTestContext(w)
-			h := &Handler{}
+			h := &Handler{DB: db}
 			r.POST("/subscribers", h.SubscriberAdd)
 
 			form := url.Values{}
@@ -121,11 +119,10 @@ func TestSubscribersHandlers(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 
-
 	tests := []struct {
 		name           string
 		id             string
-		setupMock      func()
+		setupMock      func(db *gorm.DB)
 		expectedStatus int
 		expectedBody   string
 	}{
@@ -144,11 +141,10 @@ func TestSubscribersHandlers(t *testing.T) {
 		{
 			name: "Database Error on Delete",
 			id:   "1",
-			setupMock: func() {
+			setupMock: func(db *gorm.DB) {
 				_ = database.GetDB().Callback().Delete().Before("gorm:delete").Register("fail_delete", func(d *gorm.DB) {
 					_ = d.AddError(errors.New("simulated delete error"))
 				})
-
 			},
 			expectedStatus: http.StatusInternalServerError,
 			expectedBody:   "Failed to delete subscriber",
@@ -162,7 +158,7 @@ func TestSubscribersHandlers(t *testing.T) {
 		{
 			name: "Success",
 			id:   "1",
-			setupMock: func() {
+			setupMock: func(db *gorm.DB) {
 				database.GetDB().Create(&models.Subscriber{Email: "to-delete@example.com"})
 			},
 			expectedStatus: http.StatusFound,
@@ -171,14 +167,14 @@ func TestSubscribersHandlers(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			database.InitDB()
+			db, _ := database.InitDB()
 			if tt.setupMock != nil {
-				tt.setupMock()
+				tt.setupMock(db)
 			}
 
 			w := httptest.NewRecorder()
 			c, r := gin.CreateTestContext(w)
-			h := &Handler{}
+			h := &Handler{DB: db}
 			r.POST("/subscribers/delete", h.SubscriberDelete)
 
 			form := url.Values{}

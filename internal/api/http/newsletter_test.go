@@ -13,10 +13,10 @@ import (
 	"strings"
 	"taunewlety/internal/platform/clients"
 	"taunewlety/internal/platform/database"
-	"taunewlety/internal/platform/sanitize"
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 type mockSMTPServer struct {
@@ -103,24 +103,28 @@ func TestNewsletterHandlers(t *testing.T) {
 	t.Run("NewsletterPreview", func(t *testing.T) {
 		tests := []struct {
 			name           string
-			setupDB        func()
+			setupDB        func() (*gorm.DB, error)
 			setupServer    func(w http.ResponseWriter, r *http.Request)
 			expectedStatus int
 			expectedBody   string
 		}{
 			{
 				name: "ConfigNil",
-				setupDB: func() {
-					database.InitDB()
+				setupDB: func() (*gorm.DB, error) {
+					db, err := database.InitDB()
+					if err != nil {
+						return nil, err
+					}
 					database.GetDB().Exec("DELETE FROM configs")
+					return db, nil
 				},
 				expectedStatus: http.StatusBadRequest,
 				expectedBody:   "Configure settings first",
 			},
 			{
 				name: "GenerateError",
-				setupDB: func() {
-					database.InitDB()
+				setupDB: func() (*gorm.DB, error) {
+					return database.InitDB()
 				},
 				setupServer: func(w http.ResponseWriter, r *http.Request) {
 					w.WriteHeader(http.StatusInternalServerError)
@@ -129,8 +133,8 @@ func TestNewsletterHandlers(t *testing.T) {
 			},
 			{
 				name: "Success",
-				setupDB: func() {
-					database.InitDB()
+				setupDB: func() (*gorm.DB, error) {
+					return database.InitDB()
 				},
 				setupServer: func(w http.ResponseWriter, r *http.Request) {
 					w.Header().Set("Content-Type", "application/json")
@@ -141,7 +145,7 @@ func TestNewsletterHandlers(t *testing.T) {
 							"response": map[string]interface{}{
 								"data": map[string]interface{}{
 									"recently_added": []interface{}{
-										map[string]interface{}{"rating_key": "1", "title": "Test"},
+										map[string]interface{}{"rating_key": 1, "title": "Test"},
 									},
 								},
 							},
@@ -156,7 +160,10 @@ func TestNewsletterHandlers(t *testing.T) {
 
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
-				tt.setupDB()
+				db, err := tt.setupDB()
+				if err != nil {
+					t.Fatalf("setupDB failed: %v", err)
+				}
 				ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					if tt.setupServer != nil {
 						tt.setupServer(w, r)
@@ -170,14 +177,10 @@ func TestNewsletterHandlers(t *testing.T) {
 					_ = database.SaveConfig(config)
 				}
 
-				h := NewHandler()
+				h := NewHandler(db)
 				r := gin.New()
 				r.SetHTMLTemplate(template.Must(
-					template.New("").Funcs(template.FuncMap{
-						"sanitizeHTML": func(input string) template.HTML {
-							return template.HTML(sanitize.HTML(input))
-						},
-					}).ParseGlob(filepath.Join(resolveWebDir(), "template", "*")),
+					template.New("").Funcs(templateFuncMap()).ParseGlob(filepath.Join(resolveWebDir(), "template", "*")),
 				))
 				r.GET("/preview", h.NewsletterPreview)
 
@@ -198,7 +201,7 @@ func TestNewsletterHandlers(t *testing.T) {
 	t.Run("NewsletterSendManual", func(t *testing.T) {
 		tests := []struct {
 			name           string
-			setupDB        func()
+			setupDB        func() (*gorm.DB, error)
 			setupServer    func(w http.ResponseWriter, r *http.Request)
 			smtpFail       bool
 			expectedStatus int
@@ -206,17 +209,21 @@ func TestNewsletterHandlers(t *testing.T) {
 		}{
 			{
 				name: "ConfigNil",
-				setupDB: func() {
-					database.InitDB()
+				setupDB: func() (*gorm.DB, error) {
+					db, err := database.InitDB()
+					if err != nil {
+						return nil, err
+					}
 					database.GetDB().Exec("DELETE FROM configs")
+					return db, nil
 				},
 				expectedStatus: http.StatusBadRequest,
 				expectedBody:   "Configure settings first",
 			},
 			{
 				name: "NoRecommendations",
-				setupDB: func() {
-					database.InitDB()
+				setupDB: func() (*gorm.DB, error) {
+					return database.InitDB()
 				},
 				setupServer: func(w http.ResponseWriter, r *http.Request) {
 					w.Header().Set("Content-Type", "application/json")
@@ -234,8 +241,8 @@ func TestNewsletterHandlers(t *testing.T) {
 			},
 			{
 				name: "GenerateError",
-				setupDB: func() {
-					database.InitDB()
+				setupDB: func() (*gorm.DB, error) {
+					return database.InitDB()
 				},
 				setupServer: func(w http.ResponseWriter, r *http.Request) {
 					w.WriteHeader(http.StatusInternalServerError)
@@ -244,8 +251,8 @@ func TestNewsletterHandlers(t *testing.T) {
 			},
 			{
 				name: "SMTPSendError",
-				setupDB: func() {
-					database.InitDB()
+				setupDB: func() (*gorm.DB, error) {
+					return database.InitDB()
 				},
 				setupServer: func(w http.ResponseWriter, r *http.Request) {
 					w.Header().Set("Content-Type", "application/json")
@@ -256,7 +263,7 @@ func TestNewsletterHandlers(t *testing.T) {
 							"response": map[string]interface{}{
 								"data": map[string]interface{}{
 									"recently_added": []interface{}{
-										map[string]interface{}{"rating_key": "1", "title": "Test"},
+										map[string]interface{}{"rating_key": 1, "title": "Test"},
 									},
 								},
 							},
@@ -272,8 +279,8 @@ func TestNewsletterHandlers(t *testing.T) {
 			},
 			{
 				name: "Success",
-				setupDB: func() {
-					database.InitDB()
+				setupDB: func() (*gorm.DB, error) {
+					return database.InitDB()
 				},
 				setupServer: func(w http.ResponseWriter, r *http.Request) {
 					w.Header().Set("Content-Type", "application/json")
@@ -284,7 +291,7 @@ func TestNewsletterHandlers(t *testing.T) {
 							"response": map[string]interface{}{
 								"data": map[string]interface{}{
 									"recently_added": []interface{}{
-										map[string]interface{}{"rating_key": "1", "title": "Test"},
+										map[string]interface{}{"rating_key": 1, "title": "Test"},
 									},
 								},
 							},
@@ -299,7 +306,10 @@ func TestNewsletterHandlers(t *testing.T) {
 
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
-				tt.setupDB()
+				db, err := tt.setupDB()
+				if err != nil {
+					t.Fatalf("setupDB failed: %v", err)
+				}
 				ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					if tt.setupServer != nil {
 						tt.setupServer(w, r)
@@ -335,7 +345,7 @@ func TestNewsletterHandlers(t *testing.T) {
 					_ = database.SaveConfig(config)
 				}
 
-				h := NewHandler()
+				h := NewHandler(db)
 				r := gin.New()
 				r.POST("/send", h.NewsletterSendManual)
 
@@ -356,11 +366,11 @@ func TestNewsletterHandlers(t *testing.T) {
 	t.Run("SendManual_GetConfigError", func(t *testing.T) {
 		os.Setenv("DB_PATH", ":memory:")
 		defer os.Unsetenv("DB_PATH")
-		database.InitDB()
+		db, _ := database.InitDB()
 		sqlDB, _ := database.GetDB().DB()
 		sqlDB.Close()
 
-		h := NewHandler()
+		h := NewHandler(db)
 		r := gin.New()
 		r.POST("/send", h.NewsletterSendManual)
 

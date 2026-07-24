@@ -2,7 +2,6 @@ package newsletter
 
 import (
 	"errors"
-	"fmt"
 	"testing"
 	"time"
 
@@ -33,7 +32,7 @@ func TestMixRecommendations(t *testing.T) {
 		{
 			name: "GetRecentlyAdded Error",
 			setupMock: func(m *mockTautulliClient) {
-				m.GetRecentlyAddedFn = func(count int) ([]map[string]interface{}, error) {
+				m.GetRecentlyAddedFn = func(count int) ([]clients.RecentlyAddedItem, error) {
 					return nil, errors.New("tautulli error")
 				}
 			},
@@ -42,27 +41,27 @@ func TestMixRecommendations(t *testing.T) {
 		{
 			name: "Full Mix Success",
 			setupMock: func(m *mockTautulliClient) {
-				m.GetRecentlyAddedFn = func(count int) ([]map[string]interface{}, error) {
-					return []map[string]interface{}{
-						{"rating_key": "1", "rating": "8.5", "genres": "Action", "title": "High Rated"},
-						{"rating_key": "2", "rating": "5.0", "genres": "Drama", "title": "Trending"},
-						{"rating_key": "3", "rating": "6.0", "genres": "Comedy", "title": "Genre Match"},
-						{"rating_key": "4", "rating": "4.0", "genres": "Horror", "title": "Fresh"},
-						{"rating_key": "5", "rating": "7.0", "genres": "Sci-Fi", "title": "Blacklisted"},
-						{"rating_key": "6", "rating": "7.0", "genres": "Sci-Fi", "title": "Expired Blacklist"},
+				m.GetRecentlyAddedFn = func(count int) ([]clients.RecentlyAddedItem, error) {
+					return []clients.RecentlyAddedItem{
+						{RatingKey: 1, Rating: 8.5, Genres: "Action", Title: "High Rated"},
+						{RatingKey: 2, Rating: 5.0, Genres: "Drama", Title: "Trending"},
+						{RatingKey: 3, Rating: 6.0, Genres: "Comedy", Title: "Genre Match"},
+						{RatingKey: 4, Rating: 4.0, Genres: "Horror", Title: "Fresh"},
+						{RatingKey: 5, Rating: 7.0, Genres: "Sci-Fi", Title: "Blacklisted"},
+						{RatingKey: 6, Rating: 7.0, Genres: "Sci-Fi", Title: "Expired Blacklist"},
 					}, nil
 				}
-				m.GetTopGenresFn = func(count int) ([]string, error) {
-					return []string{"Comedy"}, nil
+				m.GetHomeStatsAllFn = func(count int) (*clients.HomeStatsResult, error) {
+					return &clients.HomeStatsResult{
+						TopGenres: []string{"Comedy"},
+						TopWatched: []clients.HomeStatsItem{
+							{RatingKey: 99, Title: "Surprise Me"},
+						},
+					}, nil
 				}
 				m.GetWatchHistoryBatchFn = func(ratingKeys []string) (map[string]clients.WatchInfo, error) {
 					return map[string]clients.WatchInfo{
 						"2": {WatchCount: 5},
-					}, nil
-				}
-				m.GetTopWatchedFn = func(count int) ([]map[string]interface{}, error) {
-					return []map[string]interface{}{
-						{"rating_key": "99", "title": "Surprise Me"},
 					}, nil
 				}
 			},
@@ -78,30 +77,30 @@ func TestMixRecommendations(t *testing.T) {
 				})
 			},
 			checkResults: func(t *testing.T, res []Candidate) {
-				foundKeys := make(map[string]bool)
+				foundKeys := make(map[int]bool)
 				for _, c := range res {
-					foundKeys[fmt.Sprintf("%v", c.Item["rating_key"])] = true
+					foundKeys[c.Item.RatingKey] = true
 				}
 
-				if !foundKeys["1"] {
+				if !foundKeys[1] {
 					t.Error("High Rated item missing")
 				}
-				if !foundKeys["2"] {
+				if !foundKeys[2] {
 					t.Error("Trending item missing")
 				}
-				if !foundKeys["3"] {
+				if !foundKeys[3] {
 					t.Error("Genre Match item missing")
 				}
-				if !foundKeys["4"] {
+				if !foundKeys[4] {
 					t.Error("Fresh item missing")
 				}
-				if foundKeys["5"] {
+				if foundKeys[5] {
 					t.Error("Blacklisted item present")
 				}
-				if !foundKeys["6"] {
+				if !foundKeys[6] {
 					t.Error("Expired blacklist item missing")
 				}
-				if !foundKeys["99"] {
+				if !foundKeys[99] {
 					t.Error("Surprise item missing")
 				}
 			},
@@ -109,31 +108,32 @@ func TestMixRecommendations(t *testing.T) {
 		{
 			name: "Deduplication and Limits",
 			setupMock: func(m *mockTautulliClient) {
-				m.GetRecentlyAddedFn = func(count int) ([]map[string]interface{}, error) {
-					return []map[string]interface{}{
-						{"rating_key": "1", "rating": "9.0", "genres": "Action", "title": "Multiple Tags"},
-						{"rating_key": "2", "rating": "8.5", "genres": "Drama"},
-						{"rating_key": "3", "rating": "8.5", "genres": "Drama"},
-						{"rating_key": "4", "rating": "8.5", "genres": "Drama"},
-						{"rating_key": "5", "rating": "8.5", "genres": "Drama"},
+				m.GetRecentlyAddedFn = func(count int) ([]clients.RecentlyAddedItem, error) {
+					return []clients.RecentlyAddedItem{
+						{RatingKey: 1, Rating: 9.0, Genres: "Action", Title: "Multiple Tags"},
+						{RatingKey: 2, Rating: 8.5, Genres: "Drama"},
+						{RatingKey: 3, Rating: 8.5, Genres: "Drama"},
+						{RatingKey: 4, Rating: 8.5, Genres: "Drama"},
+						{RatingKey: 5, Rating: 8.5, Genres: "Drama"},
 					}, nil
 				}
-				m.GetTopGenresFn = func(count int) ([]string, error) { return nil, nil }
+				m.GetHomeStatsAllFn = func(count int) (*clients.HomeStatsResult, error) {
+					return &clients.HomeStatsResult{}, nil
+				}
 				m.GetWatchHistoryBatchFn = func(ratingKeys []string) (map[string]clients.WatchInfo, error) {
 					return map[string]clients.WatchInfo{
 						"1": {WatchCount: 10},
 					}, nil
 				}
-				m.GetTopWatchedFn = func(count int) ([]map[string]interface{}, error) { return nil, nil }
 			},
 			checkResults: func(t *testing.T, res []Candidate) {
-				counts := make(map[string]int)
+				counts := make(map[int]int)
 				for _, c := range res {
-					counts[fmt.Sprintf("%v", c.Item["rating_key"])]++
+					counts[c.Item.RatingKey]++
 				}
 				for key, count := range counts {
 					if count > 1 {
-						t.Errorf("Item %s appeared %d times", key, count)
+						t.Errorf("Item %d appeared %d times", key, count)
 					}
 				}
 			},
@@ -141,14 +141,15 @@ func TestMixRecommendations(t *testing.T) {
 		{
 			name: "Invalid Rating Parsing",
 			setupMock: func(m *mockTautulliClient) {
-				m.GetRecentlyAddedFn = func(count int) ([]map[string]interface{}, error) {
-					return []map[string]interface{}{
-						{"rating_key": "1", "rating": "invalid", "genres": "Action"},
+				m.GetRecentlyAddedFn = func(count int) ([]clients.RecentlyAddedItem, error) {
+					return []clients.RecentlyAddedItem{
+						{RatingKey: 1, Rating: 0, Genres: "Action"},
 					}, nil
 				}
-				m.GetTopGenresFn = func(count int) ([]string, error) { return nil, nil }
+				m.GetHomeStatsAllFn = func(count int) (*clients.HomeStatsResult, error) {
+					return &clients.HomeStatsResult{}, nil
+				}
 				m.GetWatchHistoryBatchFn = func(ratingKeys []string) (map[string]clients.WatchInfo, error) { return nil, nil }
-				m.GetTopWatchedFn = func(count int) ([]map[string]interface{}, error) { return nil, nil }
 			},
 			checkResults: func(t *testing.T, res []Candidate) {
 				if len(res) != 1 {
@@ -162,16 +163,17 @@ func TestMixRecommendations(t *testing.T) {
 		{
 			name: "Case Insensitive Genre Match",
 			setupMock: func(m *mockTautulliClient) {
-				m.GetRecentlyAddedFn = func(count int) ([]map[string]interface{}, error) {
-					return []map[string]interface{}{
-						{"rating_key": "1", "rating": "5.0", "genres": "ACTION, DRAMA"},
+				m.GetRecentlyAddedFn = func(count int) ([]clients.RecentlyAddedItem, error) {
+					return []clients.RecentlyAddedItem{
+						{RatingKey: 1, Rating: 5.0, Genres: "ACTION, DRAMA"},
 					}, nil
 				}
-				m.GetTopGenresFn = func(count int) ([]string, error) {
-					return []string{"action"}, nil
+				m.GetHomeStatsAllFn = func(count int) (*clients.HomeStatsResult, error) {
+					return &clients.HomeStatsResult{
+						TopGenres: []string{"action"},
+					}, nil
 				}
 				m.GetWatchHistoryBatchFn = func(ratingKeys []string) (map[string]clients.WatchInfo, error) { return nil, nil }
-				m.GetTopWatchedFn = func(count int) ([]map[string]interface{}, error) { return nil, nil }
 			},
 			checkResults: func(t *testing.T, res []Candidate) {
 				if len(res) != 1 {
@@ -185,10 +187,13 @@ func TestMixRecommendations(t *testing.T) {
 		{
 			name: "Empty Tautulli Results",
 			setupMock: func(m *mockTautulliClient) {
-				m.GetRecentlyAddedFn = func(count int) ([]map[string]interface{}, error) { return []map[string]interface{}{}, nil }
-				m.GetTopGenresFn = func(count int) ([]string, error) { return nil, nil }
+				m.GetRecentlyAddedFn = func(count int) ([]clients.RecentlyAddedItem, error) {
+					return []clients.RecentlyAddedItem{}, nil
+				}
+				m.GetHomeStatsAllFn = func(count int) (*clients.HomeStatsResult, error) {
+					return &clients.HomeStatsResult{}, nil
+				}
 				m.GetWatchHistoryBatchFn = func(ratingKeys []string) (map[string]clients.WatchInfo, error) { return nil, nil }
-				m.GetTopWatchedFn = func(count int) ([]map[string]interface{}, error) { return nil, nil }
 			},
 			checkResults: func(t *testing.T, res []Candidate) {
 				if len(res) != 0 {
@@ -212,6 +217,7 @@ func TestMixRecommendations(t *testing.T) {
 			}
 
 			s := &NewsletterService{
+				DB:       db,
 				Tautulli: m,
 			}
 

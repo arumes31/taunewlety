@@ -30,7 +30,11 @@ func CSRFProtection() gin.HandlerFunc {
 				return
 			}
 			session.Set("csrf_token", newToken)
-			_ = session.Save()
+			if err := session.Save(); err != nil {
+				c.String(http.StatusInternalServerError, "Failed to save session")
+				c.Abort()
+				return
+			}
 			token = newToken
 		} else {
 			token = csrfSession.(string)

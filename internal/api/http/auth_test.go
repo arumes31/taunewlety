@@ -9,12 +9,13 @@ import (
 	"os"
 	"regexp"
 	"strings"
-	"taunewlety/internal/platform/sanitize"
+	"taunewlety/internal/platform/database"
 	"testing"
 
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 )
 
 func TestMain(m *testing.M) {
@@ -33,7 +34,19 @@ func TestLoginGet(t *testing.T) {
 	os.Setenv("SESSION_SECRET", "test-secret")
 	defer os.Unsetenv("SESSION_SECRET")
 
-	r := SetupRouter()
+	os.Setenv("DB_PATH", ":memory:")
+	defer os.Unsetenv("DB_PATH")
+
+	db, err := database.InitDB()
+	if err != nil {
+		t.Fatalf("failed to init DB: %v", err)
+	}
+
+	logger := zap.NewNop()
+	r, routerErr := SetupRouter(db, logger)
+	if routerErr != nil {
+		t.Fatalf("SetupRouter failed: %v", routerErr)
+	}
 
 	t.Run("renders login page with CSRF token", func(t *testing.T) {
 		w := httptest.NewRecorder()
@@ -54,12 +67,23 @@ func TestLoginGet(t *testing.T) {
 func TestLoginPost(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
+	os.Setenv("DB_PATH", ":memory:")
+	defer os.Unsetenv("DB_PATH")
+
 	setup := func() (*gin.Engine, string, string) {
 		os.Setenv("APP_USER", "admin")
 		os.Setenv("APP_PASS", "password")
 		os.Setenv("SESSION_SECRET", "test-secret")
 
-		r := SetupRouter()
+		db, err := database.InitDB()
+		if err != nil {
+			log.Fatalf("failed to init DB: %v", err)
+		}
+		logger := zap.NewNop()
+		r, routerErr := SetupRouter(db, logger)
+		if routerErr != nil {
+			log.Fatalf("SetupRouter failed: %v", routerErr)
+		}
 
 		// Get a valid CSRF token and cookie
 		w := httptest.NewRecorder()
@@ -218,18 +242,19 @@ func TestAuthHandlers_SessionSaveFailure(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 
+	os.Setenv("DB_PATH", ":memory:")
+	defer os.Unsetenv("DB_PATH")
+
+	db, _ := database.InitDB()
+
 	r := gin.New()
 	store := cookie.NewStore([]byte("secret"))
 	r.Use(sessions.Sessions("mysession", store))
 	r.SetHTMLTemplate(template.Must(
-		template.New("").Funcs(template.FuncMap{
-			"sanitizeHTML": func(input string) template.HTML {
-				return template.HTML(sanitize.HTML(input))
-			},
-		}).ParseGlob("web/template/*"),
+		template.New("").Funcs(templateFuncMap()).ParseGlob("web/template/*"),
 	))
 
-	handler := NewHandler()
+	handler := NewHandler(db)
 
 	r.POST("/login_bad_save", func(c *gin.Context) {
 		session := sessions.Default(c)
@@ -255,4 +280,63 @@ func TestAuthHandlers_SessionSaveFailure(t *testing.T) {
 	if !strings.Contains(w.Body.String(), "Failed to save session") {
 		t.Errorf("expected 'Failed to save session' error page, got: %s", w.Body.String())
 	}
+}
+
+func TestLogoutGet(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	os.Setenv("DB_PATH", ":memory:")
+	defer os.Unsetenv("DB_PATH")
+
+	db, _ := database.InitDB()
+
+	r := gin.New()
+	store := cookie.NewStore([]byte("secret"))
+	r.Use(sessions.Sessions("mysession", store))
+
+	handler := NewHandler(db)
+	r.GET("/logout", handler.LogoutGet)
+
+	t.Run("clears session and redirects to login", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest(http.MethodGet, "/logout", nil)
+		r.ServeHTTP(w, req)
+
+		if w.Code != http.StatusFound {
+			t.Errorf("expected status 302, got %d", w.Code)
+		}
+		loc := w.Header().Get("Location")
+		if loc != "/login" {
+			t.Errorf("expected redirect to /login, got %q", loc)
+		}
+	})
+
+	t.Run("clears existing user session", func(t *testing.T) {
+		// First set a session
+		r.GET("/set-session", func(c *gin.Context) {
+			session := sessions.Default(c)
+			session.Set("user", "admin")
+			_ = session.Save()
+			c.String(http.StatusOK, "session set")
+		})
+
+		wSet := httptest.NewRecorder()
+		reqSet, _ := http.NewRequest(http.MethodGet, "/set-session", nil)
+		r.ServeHTTP(wSet, reqSet)
+		cookieVal := wSet.Header().Get("Set-Cookie")
+
+		// Now call logout with that session cookie
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest(http.MethodGet, "/logout", nil)
+		req.Header.Set("Cookie", cookieVal)
+		r.ServeHTTP(w, req)
+
+		if w.Code != http.StatusFound {
+			t.Errorf("expected status 302, got %d", w.Code)
+		}
+		loc := w.Header().Get("Location")
+		if loc != "/login" {
+			t.Errorf("expected redirect to /login, got %q", loc)
+		}
+	})
 }

@@ -13,7 +13,6 @@ import (
 
 	"taunewlety/internal/domain/models"
 	"taunewlety/internal/platform/database"
-	"taunewlety/internal/platform/sanitize"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -27,33 +26,36 @@ func TestSettingsHandlers_DashboardGet(t *testing.T) {
 
 	tests := []struct {
 		name           string
-		setup          func()
+		setup          func() *gorm.DB
 		expectedStatus int
 		expectedBody   string
 	}{
 		{
 			name: "Success",
-			setup: func() {
-				database.InitDB()
+			setup: func() *gorm.DB {
+				db, _ := database.InitDB()
 				database.GetDB().Create(&models.Subscriber{Email: "test@example.com"})
 				database.GetDB().Create(&models.TokenUsage{TotalTokens: 100})
+				return db
 			},
 			expectedStatus: http.StatusOK,
 			expectedBody:   "test@example.com",
 		},
 		{
 			name: "ScanError",
-			setup: func() {
-				database.InitDB()
+			setup: func() *gorm.DB {
+				db, _ := database.InitDB()
 				_ = database.GetDB().Migrator().DropTable(&models.TokenUsage{})
+				return db
 			},
 			expectedStatus: http.StatusOK,
 		},
 		{
 			name: "ConfigNil",
-			setup: func() {
-				database.InitDB()
+			setup: func() *gorm.DB {
+				db, _ := database.InitDB()
 				database.GetDB().Exec("DELETE FROM configs")
+				return db
 			},
 			expectedStatus: http.StatusOK,
 		},
@@ -61,17 +63,13 @@ func TestSettingsHandlers_DashboardGet(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tt.setup()
+			db := tt.setup()
 			w := httptest.NewRecorder()
 			_, r := gin.CreateTestContext(w)
 			r.SetHTMLTemplate(template.Must(
-				template.New("").Funcs(template.FuncMap{
-					"sanitizeHTML": func(input string) template.HTML {
-						return template.HTML(sanitize.HTML(input))
-					},
-				}).ParseGlob(filepath.Join(resolveWebDir(), "template", "*")),
+				template.New("").Funcs(templateFuncMap()).ParseGlob(filepath.Join(resolveWebDir(), "template", "*")),
 			))
-			h := &Handler{}
+			h := &Handler{DB: db}
 			r.GET("/", h.DashboardGet)
 
 			req, _ := http.NewRequest(http.MethodGet, "/", nil)
@@ -95,12 +93,16 @@ func TestSettingsHandlers_SettingsPost(t *testing.T) {
 
 	tests := []struct {
 		name           string
-		setup          func()
+		setup          func() *gorm.DB
 		formData       url.Values
 		expectedStatus int
 	}{
 		{
 			name: "BindError",
+			setup: func() *gorm.DB {
+				db, _ := database.InitDB()
+				return db
+			},
 			formData: url.Values{
 				"smtp_port": {"not-a-number"},
 			},
@@ -108,6 +110,10 @@ func TestSettingsHandlers_SettingsPost(t *testing.T) {
 		},
 		{
 			name: "ValidationError_InvalidURL",
+			setup: func() *gorm.DB {
+				db, _ := database.InitDB()
+				return db
+			},
 			formData: url.Values{
 				"tautulli_url":     {"not-a-url"},
 				"tautulli_api_key": {"testkey"},
@@ -119,12 +125,18 @@ func TestSettingsHandlers_SettingsPost(t *testing.T) {
 				"smtp_pass":        {"password"},
 				"smtp_sender":      {"sender@example.com"},
 				"app_base_url":     {"http://localhost:8080"},
+				"newsletter_time":  {"09:00"},
+				"rec_count":        {"10"},
 				"language":         {"en_US"},
 			},
 			expectedStatus: http.StatusBadRequest,
 		},
 		{
 			name: "ValidationError_InvalidPort",
+			setup: func() *gorm.DB {
+				db, _ := database.InitDB()
+				return db
+			},
 			formData: url.Values{
 				"tautulli_url":     {"http://localhost:8181"},
 				"tautulli_api_key": {"testkey"},
@@ -136,21 +148,23 @@ func TestSettingsHandlers_SettingsPost(t *testing.T) {
 				"smtp_pass":        {"password"},
 				"smtp_sender":      {"sender@example.com"},
 				"app_base_url":     {"http://localhost:8080"},
+				"newsletter_time":  {"09:00"},
+				"rec_count":        {"10"},
 				"language":         {"en_US"},
 			},
 			expectedStatus: http.StatusBadRequest,
 		},
 		{
 			name: "SaveError",
-			setup: func() {
-				database.InitDB()
+			setup: func() *gorm.DB {
+				db, _ := database.InitDB()
 				_ = database.GetDB().Callback().Create().Before("gorm:create").Register("fail_save", func(d *gorm.DB) {
 					_ = d.AddError(errors.New("simulated save error"))
 				})
 				_ = database.GetDB().Callback().Update().Before("gorm:update").Register("fail_save", func(d *gorm.DB) {
 					_ = d.AddError(errors.New("simulated save error"))
 				})
-
+				return db
 			},
 			formData: url.Values{
 				"tautulli_url":     {"http://localhost:8181"},
@@ -163,15 +177,18 @@ func TestSettingsHandlers_SettingsPost(t *testing.T) {
 				"smtp_pass":        {"password"},
 				"smtp_sender":      {"sender@example.com"},
 				"app_base_url":     {"http://localhost:8080"},
+				"newsletter_time":  {"09:00"},
+				"rec_count":        {"10"},
 				"language":         {"en_US"},
 			},
 			expectedStatus: http.StatusInternalServerError,
 		},
 		{
 			name: "SuccessNewConfig",
-			setup: func() {
-				database.InitDB()
+			setup: func() *gorm.DB {
+				db, _ := database.InitDB()
 				database.GetDB().Exec("DELETE FROM configs")
+				return db
 			},
 			formData: url.Values{
 				"tautulli_url":     {"http://new-config:8181"},
@@ -184,14 +201,17 @@ func TestSettingsHandlers_SettingsPost(t *testing.T) {
 				"smtp_pass":        {"password"},
 				"smtp_sender":      {"sender@example.com"},
 				"app_base_url":     {"http://localhost:8080"},
+				"newsletter_time":  {"09:00"},
+				"rec_count":        {"10"},
 				"language":         {"en_US"},
 			},
 			expectedStatus: http.StatusFound,
 		},
 		{
 			name: "SuccessUpdateConfig",
-			setup: func() {
-				database.InitDB()
+			setup: func() *gorm.DB {
+				db, _ := database.InitDB()
+				return db
 			},
 			formData: url.Values{
 				"tautulli_url":     {"http://updated-config:8181"},
@@ -204,6 +224,8 @@ func TestSettingsHandlers_SettingsPost(t *testing.T) {
 				"smtp_pass":        {"password"},
 				"smtp_sender":      {"sender@example.com"},
 				"app_base_url":     {"http://localhost:8080"},
+				"newsletter_time":  {"09:00"},
+				"rec_count":        {"10"},
 				"language":         {"en_US"},
 			},
 			expectedStatus: http.StatusFound,
@@ -212,12 +234,13 @@ func TestSettingsHandlers_SettingsPost(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			var db *gorm.DB
 			if tt.setup != nil {
-				tt.setup()
+				db = tt.setup()
 			}
 			w := httptest.NewRecorder()
 			_, r := gin.CreateTestContext(w)
-			h := &Handler{}
+			h := &Handler{DB: db}
 			r.POST("/settings", h.SettingsPost)
 
 			req, _ := http.NewRequest(http.MethodPost, "/settings", strings.NewReader(tt.formData.Encode()))

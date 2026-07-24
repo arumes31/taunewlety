@@ -1,7 +1,11 @@
 #!/bin/sh
 
-# Start Ollama in the background
+# Start Ollama in the background and capture the PID
 ollama serve &
+OLLAMA_PID=$!
+
+# Handle SIGTERM gracefully
+trap 'kill -TERM $OLLAMA_PID 2>/dev/null; wait $OLLAMA_PID; exit 0' TERM INT
 
 # Wait for Ollama to be ready
 echo "Waiting for Ollama to start..."

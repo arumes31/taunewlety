@@ -1,24 +1,27 @@
 package http
 
 import (
+	"errors"
 	"net/http"
 	"os"
 	"taunewlety/internal/domain/models"
-	"taunewlety/internal/platform/database"
 	"taunewlety/internal/service/newsletter"
 
 	"github.com/gin-gonic/gin"
 )
 
 func (h *Handler) NewsletterPreview(c *gin.Context) {
-	config, _ := database.GetConfig()
-	if config == nil {
+	svc := h.newNewsletterService()
+	if svc == nil {
 		c.String(http.StatusBadRequest, "Configure settings first")
 		return
 	}
-	svc := newsletter.NewNewsletterService(config)
-	subject, body, err := svc.GenerateNewsletter()
+	subject, body, err := svc.GenerateNewsletterWithContext(c.Request.Context())
 	if err != nil {
+		if errors.Is(err, newsletter.ErrNoRecommendations) {
+			c.String(http.StatusUnprocessableEntity, "No recommendations available. Check your Tautulli connection and settings.")
+			return
+		}
 		c.String(http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -26,15 +29,14 @@ func (h *Handler) NewsletterPreview(c *gin.Context) {
 }
 
 func (h *Handler) NewsletterSendManual(c *gin.Context) {
-	config, err := database.GetConfig()
-	if err != nil || config == nil {
+	svc := h.newNewsletterService()
+	if svc == nil {
 		c.String(http.StatusBadRequest, "Configure settings first")
 		return
 	}
-	svc := newsletter.NewNewsletterService(config)
-	subject, body, err := svc.GenerateNewsletter()
+	subject, body, err := svc.GenerateNewsletterWithContext(c.Request.Context())
 	if err != nil {
-		if err == newsletter.ErrNoRecommendations {
+		if errors.Is(err, newsletter.ErrNoRecommendations) {
 			c.JSON(http.StatusOK, gin.H{"status": "Skipped", "message": "No recommendations found"})
 		} else {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -44,7 +46,7 @@ func (h *Handler) NewsletterSendManual(c *gin.Context) {
 
 	// Send to all active subscribers
 	var subscribers []models.Subscriber
-	database.GetDB().Where("active = ?", true).Find(&subscribers)
+	h.DB.Where("active = ?", true).Find(&subscribers)
 	for _, sub := range subscribers {
 		go func(email string) {
 			_ = svc.SendEmail(email, subject, body)

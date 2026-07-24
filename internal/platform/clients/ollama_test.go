@@ -1,6 +1,7 @@
 package clients
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -29,17 +30,17 @@ func TestNewOllamaClient(t *testing.T) {
 
 func TestOllamaClient_Generate(t *testing.T) {
 	tests := []struct {
-		name                string
-		serverResponse      interface{}
-		serverStatusCode    int
-		serverRawResponse   string
-		shortTimeout        bool
-		serverDelay         time.Duration
-		expectedResponse    string
-		expectedPromptEval  int
-		expectedEval        int
-		expectError         bool
-		errorContains       string
+		name               string
+		serverResponse     interface{}
+		serverStatusCode   int
+		serverRawResponse  string
+		shortTimeout       bool
+		serverDelay        time.Duration
+		expectedResponse   string
+		expectedPromptEval int
+		expectedEval       int
+		expectError        bool
+		errorContains      string
 	}{
 		{
 			name: "Success",
@@ -55,30 +56,30 @@ func TestOllamaClient_Generate(t *testing.T) {
 			expectError:        false,
 		},
 		{
-			name:               "Non-200 Status Code",
-			serverRawResponse:  "not found",
-			serverStatusCode:   http.StatusNotFound,
-			expectError:        true,
-			errorContains:      "ollama API returned status 404: not found",
+			name:              "Non-200 Status Code",
+			serverRawResponse: "not found",
+			serverStatusCode:  http.StatusNotFound,
+			expectError:       true,
+			errorContains:     "ollama API returned status 404: not found",
 		},
 		{
-			name:               "Invalid JSON Response",
-			serverRawResponse:  "{invalid-json}",
-			serverStatusCode:   http.StatusOK,
-			expectError:        true,
+			name:              "Invalid JSON Response",
+			serverRawResponse: "{invalid-json}",
+			serverStatusCode:  http.StatusOK,
+			expectError:       true,
 		},
 		{
-			name:          "Network Error",
-			expectError:   true,
+			name:        "Network Error",
+			expectError: true,
 			// We'll trigger this by using an invalid URL
 		},
 		{
-			name:          "Timeout",
+			name:             "Timeout",
 			serverStatusCode: http.StatusOK,
-			shortTimeout:  true,
-			serverDelay:   100 * time.Millisecond,
-			expectError:   true,
-			errorContains: "context deadline exceeded",
+			shortTimeout:     true,
+			serverDelay:      100 * time.Millisecond,
+			expectError:      true,
+			errorContains:    "context deadline exceeded",
 		},
 	}
 
@@ -112,7 +113,7 @@ func TestOllamaClient_Generate(t *testing.T) {
 				client.HTTP.Timeout = 10 * time.Millisecond
 			}
 
-			resp, promptEval, eval, err := client.Generate("test prompt")
+			resp, promptEval, eval, err := client.Generate(context.Background(), "test prompt")
 
 			if tt.expectError {
 				if err == nil {

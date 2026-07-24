@@ -22,6 +22,22 @@ func (h *Handler) LoginGet(c *gin.Context) {
 }
 
 func (h *Handler) LoginPost(c *gin.Context) {
+	ip := c.ClientIP()
+
+	// Rate limit check: block if too many failed attempts from this IP
+	if !loginLimiter.check(ip) {
+		token, err := generateAndStoreCSRF(sessions.Default(c))
+		if err != nil {
+			c.String(http.StatusInternalServerError, "Failed to generate CSRF token")
+			return
+		}
+		c.HTML(http.StatusTooManyRequests, "login.html", gin.H{
+			"error":     "Too many login attempts. Try again later.",
+			"csrfToken": token,
+		})
+		return
+	}
+
 	session := sessions.Default(c)
 
 	// CSRF validation (login has its own CSRF handling since there is
@@ -65,21 +81,15 @@ func (h *Handler) LoginPost(c *gin.Context) {
 	passMatch := subtle.ConstantTimeCompare([]byte(pass), []byte(envPass)) == 1
 
 	if userMatch && passMatch {
+		loginLimiter.reset(ip)
 		session.Set("user", user)
 		if err := session.Save(); err != nil {
-			token, tErr := generateAndStoreCSRF(session)
-			if tErr != nil {
-				c.String(http.StatusInternalServerError, "Failed to generate CSRF token")
-				return
-			}
-			c.HTML(http.StatusInternalServerError, "login.html", gin.H{
-				"error":     "Failed to save session",
-				"csrfToken": token,
-			})
+			c.String(http.StatusInternalServerError, "Failed to save session")
 			return
 		}
 		c.Redirect(http.StatusFound, "/")
 	} else {
+		loginLimiter.recordFailure(ip)
 		token, err := generateAndStoreCSRF(session)
 		if err != nil {
 			c.String(http.StatusInternalServerError, "Failed to generate CSRF token")
@@ -92,12 +102,15 @@ func (h *Handler) LoginPost(c *gin.Context) {
 	}
 }
 
-// LogoutPost clears the session and redirects to the login page.
-func (h *Handler) LogoutPost(c *gin.Context) {
+// LogoutGet clears the session and redirects to the login page.
+func (h *Handler) LogoutGet(c *gin.Context) {
 	session := sessions.Default(c)
 	session.Clear()
 	session.Options(sessions.Options{MaxAge: -1})
-	_ = session.Save()
+	if err := session.Save(); err != nil {
+		c.String(http.StatusInternalServerError, "Failed to save session")
+		return
+	}
 	c.Redirect(http.StatusFound, "/login")
 }
 
@@ -109,6 +122,8 @@ func generateAndStoreCSRF(session sessions.Session) (string, error) {
 		return "", err
 	}
 	session.Set("csrf_token", token)
-	_ = session.Save()
+	if err := session.Save(); err != nil {
+		return "", err
+	}
 	return token, nil
 }

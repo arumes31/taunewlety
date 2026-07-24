@@ -30,7 +30,7 @@ func TestTautulliClient_GetRecentlyAdded(t *testing.T) {
 		name       string
 		statusCode int
 		response   interface{}
-		want       []map[string]interface{}
+		want       []RecentlyAddedItem
 		wantErr    bool
 	}{
 		{
@@ -40,15 +40,15 @@ func TestTautulliClient_GetRecentlyAdded(t *testing.T) {
 				"response": map[string]interface{}{
 					"data": map[string]interface{}{
 						"recently_added": []interface{}{
-							map[string]interface{}{"title": "Movie 1"},
-							map[string]interface{}{"title": "Movie 2"},
+							map[string]interface{}{"title": "Movie 1", "rating_key": float64(1)},
+							map[string]interface{}{"title": "Movie 2", "rating_key": float64(2)},
 						},
 					},
 				},
 			},
-			want: []map[string]interface{}{
-				{"title": "Movie 1"},
-				{"title": "Movie 2"},
+			want: []RecentlyAddedItem{
+				{Title: "Movie 1", RatingKey: 1},
+				{Title: "Movie 2", RatingKey: 2},
 			},
 			wantErr: false,
 		},
@@ -303,7 +303,7 @@ func TestTautulliClient_GetWatchHistoryBatch(t *testing.T) {
 		}
 	})
 
-	t.Run("success and errors mixed", func(t *testing.T) {
+	t.Run("success and errors mixed - minority failures", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ratingKey := r.URL.Query().Get("rating_key")
 			if ratingKey == "fail" {
@@ -333,6 +333,33 @@ func TestTautulliClient_GetWatchHistoryBatch(t *testing.T) {
 			t.Errorf("unexpected watch counts: %v", got)
 		}
 	})
+
+	t.Run("majority failures returns error", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ratingKey := r.URL.Query().Get("rating_key")
+			if ratingKey == "fail1" || ratingKey == "fail2" {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"response": map[string]interface{}{
+					"data": map[string]interface{}{
+						"recordsFiltered": 10.0,
+					},
+				},
+			})
+		}))
+		defer server.Close()
+
+		client := NewTautulliClient(server.URL, "key")
+		got, err := client.GetWatchHistoryBatch([]string{"fail1", "fail2", "ok"})
+		if err == nil {
+			t.Error("expected error when majority of queries fail, got nil")
+		}
+		if len(got) != 1 {
+			t.Errorf("expected 1 result, got %d", len(got))
+		}
+	})
 }
 
 func TestTautulliClient_GetTopWatched(t *testing.T) {
@@ -340,7 +367,7 @@ func TestTautulliClient_GetTopWatched(t *testing.T) {
 		name       string
 		statusCode int
 		response   interface{}
-		want       []map[string]interface{}
+		want       []HomeStatsItem
 		wantErr    bool
 	}{
 		{
@@ -352,12 +379,12 @@ func TestTautulliClient_GetTopWatched(t *testing.T) {
 						map[string]interface{}{
 							"stat_id": "top_movies",
 							"rows": []interface{}{
-								map[string]interface{}{"title": "Movie 1"},
+								map[string]interface{}{"title": "Movie 1", "rating_key": float64(1), "section_id": float64(2)},
 							},
 						},
 						map[string]interface{}{
 							"stat_id": "top_tv",
-							"rows":    nil, // Case for missing rows
+							"rows": nil, // Case for missing rows
 						},
 						map[string]interface{}{
 							"stat_id": "other",
@@ -366,8 +393,8 @@ func TestTautulliClient_GetTopWatched(t *testing.T) {
 					},
 				},
 			},
-			want: []map[string]interface{}{
-				{"title": "Movie 1"},
+			want: []HomeStatsItem{
+				{Title: "Movie 1", RatingKey: 1, SectionID: 2},
 			},
 			wantErr: false,
 		},
@@ -449,9 +476,7 @@ func TestTautulliClient_GetTopWatched(t *testing.T) {
 					"data": []interface{}{
 						map[string]interface{}{
 							"stat_id": "top_movies",
-							"rows": []interface{}{
-								"not a map",
-							},
+							"rows":    []interface{}{"not a map"},
 						},
 					},
 				},
@@ -602,9 +627,7 @@ func TestTautulliClient_GetTopGenres(t *testing.T) {
 					"data": []interface{}{
 						map[string]interface{}{
 							"stat_id": "top_genres",
-							"rows": []interface{}{
-								"not a map",
-							},
+							"rows":    []interface{}{"not a map"},
 						},
 					},
 				},
@@ -640,6 +663,180 @@ func TestTautulliClient_GetTopGenres(t *testing.T) {
 	}
 }
 
+func TestTautulliClient_GetHomeStatsAll(t *testing.T) {
+	tests := []struct {
+		name       string
+		statusCode int
+		response   interface{}
+		want       *HomeStatsResult
+		wantErr    bool
+	}{
+		{
+			name:       "success with both stats",
+			statusCode: http.StatusOK,
+			response: map[string]interface{}{
+				"response": map[string]interface{}{
+					"data": []interface{}{
+						map[string]interface{}{
+							"stat_id": "top_movies",
+							"rows": []interface{}{
+								map[string]interface{}{"title": "Movie 1", "rating_key": float64(1), "section_id": float64(2)},
+								map[string]interface{}{"title": "Movie 2", "rating_key": float64(3), "section_id": float64(4)},
+							},
+						},
+						map[string]interface{}{
+							"stat_id": "top_tv",
+							"rows": []interface{}{
+								map[string]interface{}{"title": "TV Show 1", "rating_key": float64(5), "section_id": float64(6)},
+							},
+						},
+						map[string]interface{}{
+							"stat_id": "top_genres",
+							"rows": []interface{}{
+								map[string]interface{}{"genre": "Action"},
+								map[string]interface{}{"genre": "Comedy"},
+								map[string]interface{}{"genre": nil},
+								map[string]interface{}{"other": "val"},
+							},
+						},
+						map[string]interface{}{
+							"stat_id": "other",
+						},
+						"not a map",
+					},
+				},
+			},
+			want: &HomeStatsResult{
+				TopWatched: []HomeStatsItem{
+					{Title: "Movie 1", RatingKey: 1, SectionID: 2},
+					{Title: "Movie 2", RatingKey: 3, SectionID: 4},
+					{Title: "TV Show 1", RatingKey: 5, SectionID: 6},
+				},
+				TopGenres: []string{"Action", "Comedy"},
+			},
+			wantErr: false,
+		},
+		{
+			name:       "success with only genres",
+			statusCode: http.StatusOK,
+			response: map[string]interface{}{
+				"response": map[string]interface{}{
+					"data": []interface{}{
+						map[string]interface{}{
+							"stat_id": "top_genres",
+							"rows": []interface{}{
+								map[string]interface{}{"genre": "Drama"},
+							},
+						},
+					},
+				},
+			},
+			want: &HomeStatsResult{
+				TopWatched: nil,
+				TopGenres:  []string{"Drama"},
+			},
+			wantErr: false,
+		},
+		{
+			name:       "success with empty data",
+			statusCode: http.StatusOK,
+			response: map[string]interface{}{
+				"response": map[string]interface{}{
+					"data": []interface{}{},
+				},
+			},
+			want:    &HomeStatsResult{},
+			wantErr: false,
+		},
+		{
+			name:       "http error",
+			statusCode: http.StatusInternalServerError,
+			wantErr:    true,
+		},
+		{
+			name:       "invalid json",
+			statusCode: http.StatusOK,
+			response:   "invalid json",
+			wantErr:    true,
+		},
+		{
+			name:       "missing response field",
+			statusCode: http.StatusOK,
+			response:   map[string]interface{}{"something_else": true},
+			wantErr:    true,
+		},
+		{
+			name:       "response field nil",
+			statusCode: http.StatusOK,
+			response:   map[string]interface{}{"response": nil},
+			wantErr:    true,
+		},
+		{
+			name:       "response field not map",
+			statusCode: http.StatusOK,
+			response:   map[string]interface{}{"response": "not a map"},
+			wantErr:    true,
+		},
+		{
+			name:       "missing data field",
+			statusCode: http.StatusOK,
+			response: map[string]interface{}{
+				"response": map[string]interface{}{},
+			},
+			wantErr: true,
+		},
+		{
+			name:       "data field nil",
+			statusCode: http.StatusOK,
+			response: map[string]interface{}{
+				"response": map[string]interface{}{"data": nil},
+			},
+			wantErr: true,
+		},
+		{
+			name:       "data field not a slice",
+			statusCode: http.StatusOK,
+			response: map[string]interface{}{
+				"response": map[string]interface{}{
+					"data": "not a slice",
+				},
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(tt.statusCode)
+				if tt.response != nil {
+					if s, ok := tt.response.(string); ok {
+						fmt.Fprint(w, s)
+					} else {
+						_ = json.NewEncoder(w).Encode(tt.response)
+					}
+				}
+			}))
+			defer server.Close()
+
+			client := NewTautulliClient(server.URL, "key")
+			got, err := client.GetHomeStatsAll(5)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("GetHomeStatsAll() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !tt.wantErr {
+				if !reflect.DeepEqual(got.TopGenres, tt.want.TopGenres) {
+					t.Errorf("GetHomeStatsAll() TopGenres = %v, want %v", got.TopGenres, tt.want.TopGenres)
+				}
+				if !reflect.DeepEqual(got.TopWatched, tt.want.TopWatched) {
+					t.Errorf("GetHomeStatsAll() TopWatched = %v, want %v", got.TopWatched, tt.want.TopWatched)
+				}
+			}
+		})
+	}
+}
+
 func TestTautulliClient_NetworkErrors(t *testing.T) {
 	client := NewTautulliClient("http://invalid-url", "key")
 
@@ -666,6 +863,13 @@ func TestTautulliClient_NetworkErrors(t *testing.T) {
 
 	t.Run("GetTopGenres network error", func(t *testing.T) {
 		_, err := client.GetTopGenres(1)
+		if err == nil {
+			t.Error("expected error, got nil")
+		}
+	})
+
+	t.Run("GetHomeStatsAll network error", func(t *testing.T) {
+		_, err := client.GetHomeStatsAll(1)
 		if err == nil {
 			t.Error("expected error, got nil")
 		}

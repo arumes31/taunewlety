@@ -1,11 +1,11 @@
 package newsletter
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
 	"taunewlety/internal/domain/models"
-	"taunewlety/internal/platform/database"
 )
 
 type GeneratedContent struct {
@@ -13,23 +13,23 @@ type GeneratedContent struct {
 	Body    string `json:"body"`
 }
 
-func (s *NewsletterService) GenerateAIContent(selection []Candidate) (*GeneratedContent, error) {
+func (s *NewsletterService) GenerateAIContent(ctx context.Context, selection []Candidate) (*GeneratedContent, error) {
 	var itemsList []string
 	for _, c := range selection {
-		title := fmt.Sprintf("%v", c.Item["title"])
-		year := fmt.Sprintf("%v", c.Item["year"])
-		if year == "<nil>" || year == "0" {
+		title := c.Item.Title
+		year := fmt.Sprintf("%d", c.Item.Year)
+		if year == "0" {
 			year = "N/A"
 		}
 
-		genres := "Unknown"
-		if g, ok := c.Item["genres"]; ok && g != nil {
-			genres = fmt.Sprintf("%v", g)
+		genres := c.Item.Genres
+		if genres == "" {
+			genres = "Unknown"
 		}
 
 		rating := "N/A"
-		if r, ok := c.Item["rating"]; ok && r != nil {
-			rating = fmt.Sprintf("%v", r)
+		if c.Item.Rating > 0 {
+			rating = fmt.Sprintf("%.1f", c.Item.Rating)
 		}
 
 		tag := strings.Join(c.Tags, ", ")
@@ -42,7 +42,7 @@ func (s *NewsletterService) GenerateAIContent(selection []Candidate) (*Generated
 	}
 
 	prompt := fmt.Sprintf(`Act as a modern newsletter editor for a Plex media server.
-Below is a list of recently added movies and series with metadata and reasons for recommendation. 
+Below is a list of recently added movies and series with metadata and reasons for recommendation.
 Select the best 6-10 items and write a catchy, engaging newsletter for the users.
 You MUST write the newsletter in the following language/locale: %s.
 
@@ -50,7 +50,7 @@ Format the output as a JSON object with two fields:
 1. "subject": A catchy, short subject line for the email.
 2. "body": The HTML content of the newsletter. Use a modern, clean style with sections for Movies and Series.
 
-IMPORTANT: You MUST include a small, discreet footer at the bottom of the "body" with a link to unsubscribe. 
+IMPORTANT: You MUST include a small, discreet footer at the bottom of the "body" with a link to unsubscribe.
 The link should look like this: <a href="{{.UnsubscribeURL}}">Unsubscribe</a>.
 
 For each item, use the "Recommended because" metadata to explain to the user why it's recommended.
@@ -59,12 +59,12 @@ Items:
 %s
 `, lang, strings.Join(itemsList, "\n"))
 
-	resp, promptTokens, completionTokens, err := s.Ollama.Generate(prompt)
+	resp, promptTokens, completionTokens, err := s.Ollama.Generate(ctx, prompt)
 	if err != nil {
 		return nil, err
 	}
 
-	database.GetDB().Create(&models.TokenUsage{
+	s.DB.Create(&models.TokenUsage{
 		PromptTokens:     promptTokens,
 		CompletionTokens: completionTokens,
 		TotalTokens:      promptTokens + completionTokens,

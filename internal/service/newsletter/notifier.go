@@ -2,10 +2,12 @@ package newsletter
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"log"
 	"mime"
+	"net"
 	"net/http"
 	"net/mail"
 	"net/smtp"
@@ -37,17 +39,102 @@ func (s *NewsletterService) SendEmail(to string, subject string, body string) er
 		body + "\r\n")
 
 	addr := fmt.Sprintf("%s:%d", s.Config.SMTPHost, s.Config.SMTPPort)
-	return smtpSendMail(addr, auth, s.Config.SMTPSender, []string{toSanitized}, msg)
+
+	encryption := s.Config.SMTPEncryption
+	if encryption == "" {
+		encryption = "starttls"
+	}
+
+	switch encryption {
+	case "tls":
+		return smtpSendMailTLS(addr, auth, s.Config.SMTPSender, []string{toSanitized}, msg)
+	case "none":
+		log.Printf("WARNING: SMTP encryption is disabled. Emails will be sent in plain text.")
+		return smtpSendMailNoAuth(addr, s.Config.SMTPSender, []string{toSanitized}, msg)
+	default: // "starttls"
+		return smtpSendMail(addr, auth, s.Config.SMTPSender, []string{toSanitized}, msg)
+	}
 }
 
 var smtpSendMail = smtp.SendMail
 
+// smtpSendMailTLS sends email using implicit TLS (port 465).
+var smtpSendMailTLS = func(addr string, auth smtp.Auth, from string, to []string, msg []byte) error {
+	host, _, _ := net.SplitHostPort(addr)
+	conn, err := tls.Dial("tcp", addr, &tls.Config{ServerName: host})
+	if err != nil {
+		return fmt.Errorf("tls dial failed: %w", err)
+	}
+	defer conn.Close()
+
+	c, err := smtp.NewClient(conn, host)
+	if err != nil {
+		return fmt.Errorf("smtp client creation failed: %w", err)
+	}
+	defer c.Close()
+
+	if err = c.Auth(auth); err != nil {
+		return fmt.Errorf("smtp auth failed: %w", err)
+	}
+	if err = c.Mail(from); err != nil {
+		return fmt.Errorf("smtp mail from failed: %w", err)
+	}
+	for _, rcpt := range to {
+		if err = c.Rcpt(rcpt); err != nil {
+			return fmt.Errorf("smtp rcpt to failed: %w", err)
+		}
+	}
+	w, err := c.Data()
+	if err != nil {
+		return fmt.Errorf("smtp data failed: %w", err)
+	}
+	if _, err = w.Write(msg); err != nil {
+		return fmt.Errorf("smtp write failed: %w", err)
+	}
+	if err = w.Close(); err != nil {
+		return fmt.Errorf("smtp close data failed: %w", err)
+	}
+	return c.Quit()
+}
+
+// smtpSendMailNoAuth sends email without authentication or encryption.
+// This should only be used for local testing or trusted internal networks.
+var smtpSendMailNoAuth = func(addr string, from string, to []string, msg []byte) error {
+	c, err := smtp.Dial(addr)
+	if err != nil {
+		return fmt.Errorf("smtp dial failed: %w", err)
+	}
+	defer c.Close()
+
+	if err = c.Mail(from); err != nil {
+		return fmt.Errorf("smtp mail from failed: %w", err)
+	}
+	for _, rcpt := range to {
+		if err = c.Rcpt(rcpt); err != nil {
+			return fmt.Errorf("smtp rcpt to failed: %w", err)
+		}
+	}
+	w, err := c.Data()
+	if err != nil {
+		return fmt.Errorf("smtp data failed: %w", err)
+	}
+	if _, err = w.Write(msg); err != nil {
+		return fmt.Errorf("smtp write failed: %w", err)
+	}
+	if err = w.Close(); err != nil {
+		return fmt.Errorf("smtp close data failed: %w", err)
+	}
+	return c.Quit()
+}
+
 // discordHTTPPost is a variable to allow mocking in tests.
+// #nosec G107
 var discordHTTPPost = func(webhookURL string, contentType string, body *bytes.Reader) (*http.Response, error) {
 	return http.Post(webhookURL, contentType, body)
 }
 
 // telegramHTTPPost is a variable to allow mocking in tests.
+// #nosec G107
 var telegramHTTPPost = func(apiURL string, contentType string, body *bytes.Reader) (*http.Response, error) {
 	return http.Post(apiURL, contentType, body)
 }
@@ -82,7 +169,7 @@ func (s *NewsletterService) SendNotifications(subject string, body string) error
 			if err != nil {
 				log.Printf("Failed to send Discord notification: %v", err)
 			} else {
-				resp.Body.Close()
+				_ = resp.Body.Close()
 			}
 		}
 	}
@@ -102,7 +189,7 @@ func (s *NewsletterService) SendNotifications(subject string, body string) error
 			if err != nil {
 				log.Printf("Failed to send Telegram notification: %v", err)
 			} else {
-				resp.Body.Close()
+				_ = resp.Body.Close()
 			}
 		}
 	}

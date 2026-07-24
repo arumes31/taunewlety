@@ -6,16 +6,19 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+
+	"go.uber.org/zap"
+	"gorm.io/gorm"
 )
 
 func TestSetupRouter(t *testing.T) {
 	tests := []struct {
-		name          string
-		sessionSecret string
-		env           string
-		cookieSecure  string
-		expectNil     bool
-		expectFatal   bool
+		name           string
+		sessionSecret  string
+		env            string
+		cookieSecure   string
+		expectNil      bool
+		expectError    bool
 	}{
 		{
 			name:          "Success with normal env",
@@ -38,20 +41,12 @@ func TestSetupRouter(t *testing.T) {
 			name:          "Missing session secret",
 			sessionSecret: "",
 			expectNil:     true,
-			expectFatal:   true,
+			expectError:   true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Mock logFatal
-			oldFatal := logFatal
-			var fatalCalled bool
-			logFatal = func(v ...interface{}) {
-				fatalCalled = true
-			}
-			defer func() { logFatal = oldFatal }()
-
 			// Set env vars
 			if tt.sessionSecret != "" {
 				os.Setenv("SESSION_SECRET", tt.sessionSecret)
@@ -67,16 +62,21 @@ func TestSetupRouter(t *testing.T) {
 				os.Unsetenv("COOKIE_SECURE")
 			}()
 
-			router := SetupRouter()
+			var db *gorm.DB // nil is fine for router setup tests
+			logger := zap.NewNop()
+			router, err := SetupRouter(db, logger)
 
+			if tt.expectError && err == nil {
+				t.Error("expected error but got nil")
+			}
+			if !tt.expectError && err != nil {
+				t.Errorf("expected no error but got: %v", err)
+			}
 			if tt.expectNil && router != nil {
 				t.Error("expected nil router")
 			}
 			if !tt.expectNil && router == nil {
 				t.Error("expected non-nil router")
-			}
-			if tt.expectFatal && !fatalCalled {
-				t.Error("expected log.Fatal to be called")
 			}
 		})
 	}
@@ -84,11 +84,11 @@ func TestSetupRouter(t *testing.T) {
 
 func TestResolveWebDir(t *testing.T) {
 	tests := []struct {
-		name     string
-		getwdErr error
-		mockWd   string
-		setupFs  func(string) string // returns temporary base dir
-		expected string
+		name      string
+		getwdErr  error
+		mockWd    string
+		setupFs   func(string) string // returns temporary base dir
+		expected  string
 	}{
 		{
 			name:     "getwd error returns web",

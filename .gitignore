@@ -18,6 +18,7 @@
 .env
 *.db
 *.db-journal
+*.db-wal
 test_build
 data/
 ollama_data/
@@ -28,4 +29,6 @@ source1/
 source2/
 app/
 temp/
+graphify-out/
 
+.claudeignore

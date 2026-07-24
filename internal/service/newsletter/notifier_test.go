@@ -1,7 +1,9 @@
 package newsletter
 
 import (
+	"bytes"
 	"errors"
+	"net/http"
 	"net/smtp"
 	"strings"
 	"taunewlety/internal/domain/models"
@@ -14,14 +16,14 @@ func TestNewsletterService_SendEmail(t *testing.T) {
 	defer func() { smtpSendMail = originalSmtpSendMail }()
 
 	tests := []struct {
-		name          string
-		to            string
-		subject       string
-		body          string
-		config        *models.Config
-		mockSendMail  func(addr string, a smtp.Auth, from string, to []string, msg []byte) error
-		wantErr       bool
-		errContains   string
+		name         string
+		to           string
+		subject      string
+		body         string
+		config       *models.Config
+		mockSendMail func(addr string, a smtp.Auth, from string, to []string, msg []byte) error
+		wantErr      bool
+		errContains  string
 	}{
 		{
 			name:    "Successful email sending",
@@ -140,9 +142,188 @@ func TestNewsletterService_SendEmail(t *testing.T) {
 }
 
 func TestNewsletterService_SendNotifications(t *testing.T) {
-	svc := &NewsletterService{}
-	err := svc.SendNotifications("subject", "body")
-	if err != nil {
-		t.Errorf("SendNotifications() error = %v, want nil", err)
-	}
+	t.Run("nil config does not panic", func(t *testing.T) {
+		svc := &NewsletterService{}
+		err := svc.SendNotifications("subject", "body")
+		if err != nil {
+			t.Errorf("SendNotifications() error = %v, want nil", err)
+		}
+	})
+
+	t.Run("no notification channels configured", func(t *testing.T) {
+		svc := &NewsletterService{
+			Config: &models.Config{},
+		}
+		err := svc.SendNotifications("subject", "body")
+		if err != nil {
+			t.Errorf("SendNotifications() error = %v, want nil", err)
+		}
+	})
+
+	t.Run("Discord webhook success", func(t *testing.T) {
+		originalDiscordPost := discordHTTPPost
+		defer func() { discordHTTPPost = originalDiscordPost }()
+
+		var capturedURL string
+		var capturedBody string
+		discordHTTPPost = func(url string, contentType string, body *bytes.Reader) (*http.Response, error) {
+			capturedURL = url
+			buf := make([]byte, body.Len())
+			_, _ = body.ReadAt(buf, 0)
+			capturedBody = string(buf)
+			return &http.Response{Body: http.NoBody}, nil
+		}
+
+		svc := &NewsletterService{
+			Config: &models.Config{
+				DiscordWebhook: "https://discord.com/api/webhooks/test",
+			},
+		}
+		err := svc.SendNotifications("Test Subject", "body")
+		if err != nil {
+			t.Errorf("SendNotifications() error = %v, want nil", err)
+		}
+		if capturedURL != "https://discord.com/api/webhooks/test" {
+			t.Errorf("expected Discord webhook URL, got %s", capturedURL)
+		}
+		if !strings.Contains(capturedBody, "📰 New newsletter: Test Subject") {
+			t.Errorf("expected Discord payload to contain newsletter subject, got %s", capturedBody)
+		}
+	})
+
+	t.Run("Discord webhook error does not fail", func(t *testing.T) {
+		originalDiscordPost := discordHTTPPost
+		defer func() { discordHTTPPost = originalDiscordPost }()
+
+		discordHTTPPost = func(url string, contentType string, body *bytes.Reader) (*http.Response, error) {
+			return nil, errors.New("network error")
+		}
+
+		svc := &NewsletterService{
+			Config: &models.Config{
+				DiscordWebhook: "https://discord.com/api/webhooks/test",
+			},
+		}
+		err := svc.SendNotifications("subject", "body")
+		if err != nil {
+			t.Errorf("SendNotifications() should not return error on Discord failure, got %v", err)
+		}
+	})
+
+	t.Run("Telegram bot success", func(t *testing.T) {
+		originalTelegramPost := telegramHTTPPost
+		defer func() { telegramHTTPPost = originalTelegramPost }()
+
+		var capturedURL string
+		var capturedBody string
+		telegramHTTPPost = func(url string, contentType string, body *bytes.Reader) (*http.Response, error) {
+			capturedURL = url
+			buf := make([]byte, body.Len())
+			_, _ = body.ReadAt(buf, 0)
+			capturedBody = string(buf)
+			return &http.Response{Body: http.NoBody}, nil
+		}
+
+		svc := &NewsletterService{
+			Config: &models.Config{
+				TelegramBotTok: "123456:ABC-DEF",
+				TelegramChatID: "987654321",
+			},
+		}
+		err := svc.SendNotifications("Test Subject", "body")
+		if err != nil {
+			t.Errorf("SendNotifications() error = %v, want nil", err)
+		}
+		if !strings.Contains(capturedURL, "https://api.telegram.org/bot123456:ABC-DEF/sendMessage") {
+			t.Errorf("expected Telegram API URL, got %s", capturedURL)
+		}
+		if !strings.Contains(capturedBody, `"chat_id":"987654321"`) {
+			t.Errorf("expected Telegram payload to contain chat_id, got %s", capturedBody)
+		}
+		if !strings.Contains(capturedBody, "📰 New newsletter: Test Subject") {
+			t.Errorf("expected Telegram payload to contain newsletter subject, got %s", capturedBody)
+		}
+	})
+
+	t.Run("Telegram bot error does not fail", func(t *testing.T) {
+		originalTelegramPost := telegramHTTPPost
+		defer func() { telegramHTTPPost = originalTelegramPost }()
+
+		telegramHTTPPost = func(url string, contentType string, body *bytes.Reader) (*http.Response, error) {
+			return nil, errors.New("network error")
+		}
+
+		svc := &NewsletterService{
+			Config: &models.Config{
+				TelegramBotTok: "123456:ABC-DEF",
+				TelegramChatID: "987654321",
+			},
+		}
+		err := svc.SendNotifications("subject", "body")
+		if err != nil {
+			t.Errorf("SendNotifications() should not return error on Telegram failure, got %v", err)
+		}
+	})
+
+	t.Run("Telegram requires both token and chat ID", func(t *testing.T) {
+		originalTelegramPost := telegramHTTPPost
+		defer func() { telegramHTTPPost = originalTelegramPost }()
+
+		var postCalled bool
+		telegramHTTPPost = func(url string, contentType string, body *bytes.Reader) (*http.Response, error) {
+			postCalled = true
+			return &http.Response{Body: http.NoBody}, nil
+		}
+
+		// Only token, no chat ID
+		svc := &NewsletterService{
+			Config: &models.Config{
+				TelegramBotTok: "123456:ABC-DEF",
+			},
+		}
+		err := svc.SendNotifications("subject", "body")
+		if err != nil {
+			t.Errorf("SendNotifications() error = %v, want nil", err)
+		}
+		if postCalled {
+			t.Error("Telegram should not be called when chat ID is missing")
+		}
+	})
+
+	t.Run("Both Discord and Telegram are called", func(t *testing.T) {
+		originalDiscordPost := discordHTTPPost
+		originalTelegramPost := telegramHTTPPost
+		defer func() {
+			discordHTTPPost = originalDiscordPost
+			telegramHTTPPost = originalTelegramPost
+		}()
+
+		var discordCalled, telegramCalled bool
+		discordHTTPPost = func(url string, contentType string, body *bytes.Reader) (*http.Response, error) {
+			discordCalled = true
+			return &http.Response{Body: http.NoBody}, nil
+		}
+		telegramHTTPPost = func(url string, contentType string, body *bytes.Reader) (*http.Response, error) {
+			telegramCalled = true
+			return &http.Response{Body: http.NoBody}, nil
+		}
+
+		svc := &NewsletterService{
+			Config: &models.Config{
+				DiscordWebhook: "https://discord.com/api/webhooks/test",
+				TelegramBotTok: "123456:ABC-DEF",
+				TelegramChatID: "987654321",
+			},
+		}
+		err := svc.SendNotifications("subject", "body")
+		if err != nil {
+			t.Errorf("SendNotifications() error = %v, want nil", err)
+		}
+		if !discordCalled {
+			t.Error("expected Discord to be called")
+		}
+		if !telegramCalled {
+			t.Error("expected Telegram to be called")
+		}
+	})
 }

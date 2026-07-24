@@ -1,6 +1,7 @@
 package newsletter
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -15,7 +16,10 @@ func TestNewsletterService_GenerateAIContent(t *testing.T) {
 	os.Setenv("DB_PATH", ":memory:")
 	defer os.Unsetenv("DB_PATH")
 
-	database.InitDB()
+	db, err := database.InitDB()
+	if err != nil {
+		t.Fatalf("failed to init DB: %v", err)
+	}
 
 	tests := []struct {
 		name           string
@@ -35,11 +39,11 @@ func TestNewsletterService_GenerateAIContent(t *testing.T) {
 			},
 			selection: []Candidate{
 				{
-					Item: map[string]interface{}{
-						"title":  "Test Movie",
-						"year":   "2026",
-						"genres": "Action",
-						"rating": "7.5",
+					Item: clients.RecentlyAddedItem{
+						Title:  "Test Movie",
+						Year:   2026,
+						Genres: "Action",
+						Rating: 7.5,
 					},
 					Tags: []string{"Critically Acclaimed"},
 				},
@@ -74,16 +78,16 @@ func TestNewsletterService_GenerateAIContent(t *testing.T) {
 			name: "Metadata edge cases (nil/0 values)",
 			selection: []Candidate{
 				{
-					Item: map[string]interface{}{
-						"title":  "Edge Movie",
-						"year":   "0",
-						"genres": nil,
-						"rating": nil,
+					Item: clients.RecentlyAddedItem{
+						Title:  "Edge Movie",
+						Year:   0,
+						Genres: "",
+						Rating: 0,
 					},
 				},
 				{
-					Item: map[string]interface{}{
-						"title": "Missing Fields Movie",
+					Item: clients.RecentlyAddedItem{
+						Title: "Missing Fields Movie",
 					},
 				},
 			},
@@ -122,9 +126,9 @@ func TestNewsletterService_GenerateAIContent(t *testing.T) {
 					return
 				}
 				resp := clients.OllamaResponse{
-					Response:        tt.ollamaResponse,
-					PromptEvalCount: 10,
-					EvalCount:       20,
+					Response:         tt.ollamaResponse,
+					PromptEvalCount:  10,
+					EvalCount:        20,
 				}
 				_ = json.NewEncoder(w).Encode(resp)
 			}))
@@ -136,8 +140,8 @@ func TestNewsletterService_GenerateAIContent(t *testing.T) {
 			}
 			conf.OllamaURL = ts.URL
 
-			svc := NewNewsletterService(conf)
-			content, err := svc.GenerateAIContent(tt.selection)
+			svc := NewNewsletterService(db, conf)
+			content, err := svc.GenerateAIContent(context.Background(), tt.selection)
 
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("wantErr = %v, got err = %v", tt.wantErr, err)

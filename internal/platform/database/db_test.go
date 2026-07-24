@@ -2,7 +2,9 @@ package database
 
 import (
 	"errors"
+	"fmt"
 	"os"
+	"strings"
 	"testing"
 
 	"taunewlety/internal/domain/models"
@@ -18,26 +20,35 @@ func TestInitDB(t *testing.T) {
 	// Backup and restore globals
 	oldDB := GetDB()
 	oldOpenDB := OpenDB
-	oldFatalf := logFatalf
 	oldPrintf := logPrintf
 	defer func() {
 		SetDB(oldDB)
 		OpenDB = oldOpenDB
-		logFatalf = oldFatalf
 		logPrintf = oldPrintf
 	}()
 
 	t.Run("Success_SeedDefault", func(t *testing.T) {
-		logFatalf = func(format string, v ...interface{}) { t.Errorf("logFatalf called unexpectedly: "+format, v...) }
-		logPrintf = func(format string, v ...interface{}) { t.Errorf("logPrintf called unexpectedly: "+format, v...) }
+		logPrintf = func(format string, v ...interface{}) {
+			// Migration progress messages are expected
+			msg := fmt.Sprintf(format, v...)
+			if !strings.Contains(msg, "Running migration") && !strings.Contains(msg, "applied successfully") {
+				t.Errorf("logPrintf called unexpectedly: %s", msg)
+			}
+		}
 		OpenDB = func() (*gorm.DB, error) {
 			return gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 		}
 
-		InitDB()
+		db, err := InitDB()
 
-		if GetDB() == nil {
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if db == nil {
 			t.Fatal("DB should not be nil")
+		}
+		if GetDB() == nil {
+			t.Fatal("global DB should not be nil after InitDB")
 		}
 
 		var count int64
@@ -48,8 +59,13 @@ func TestInitDB(t *testing.T) {
 	})
 
 	t.Run("Success_AlreadySeeded", func(t *testing.T) {
-		logFatalf = func(format string, v ...interface{}) { t.Errorf("logFatalf called unexpectedly: "+format, v...) }
-		logPrintf = func(format string, v ...interface{}) { t.Errorf("logPrintf called unexpectedly: "+format, v...) }
+		logPrintf = func(format string, v ...interface{}) {
+			// Migration progress messages are expected
+			msg := fmt.Sprintf(format, v...)
+			if !strings.Contains(msg, "Running migration") && !strings.Contains(msg, "applied successfully") {
+				t.Errorf("logPrintf called unexpectedly: %s", msg)
+			}
+		}
 
 		sharedDSN := "file::memory:?cache=shared"
 		OpenDB = func() (*gorm.DB, error) {
@@ -57,9 +73,15 @@ func TestInitDB(t *testing.T) {
 		}
 
 		// First call seeds
-		InitDB()
+		_, err := InitDB()
+		if err != nil {
+			t.Fatalf("first InitDB failed: %v", err)
+		}
 		// Second call skips seeding (same shared DB)
-		InitDB()
+		_, err = InitDB()
+		if err != nil {
+			t.Fatalf("second InitDB failed: %v", err)
+		}
 
 		var count int64
 		GetDB().Model(&models.Config{}).Count(&count)
@@ -69,20 +91,19 @@ func TestInitDB(t *testing.T) {
 	})
 
 	t.Run("OpenDB_Error", func(t *testing.T) {
-		var fatalCalled bool
-		logFatalf = func(format string, v ...interface{}) { fatalCalled = true }
 		OpenDB = func() (*gorm.DB, error) { return nil, errors.New("open error") }
 
-		InitDB()
+		_, err := InitDB()
 
-		if !fatalCalled {
-			t.Error("expected logFatalf to be called")
+		if err == nil {
+			t.Error("expected error, got nil")
+		}
+		if !strings.Contains(err.Error(), "open error") {
+			t.Errorf("expected error to contain 'open error', got %v", err)
 		}
 	})
 
 	t.Run("AutoMigrate_Error", func(t *testing.T) {
-		var fatalCalled bool
-		logFatalf = func(format string, v ...interface{}) { fatalCalled = true }
 		OpenDB = func() (*gorm.DB, error) {
 			db, _ := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 			// Close the database to make AutoMigrate fail
@@ -91,10 +112,13 @@ func TestInitDB(t *testing.T) {
 			return db, nil
 		}
 
-		InitDB()
+		_, err := InitDB()
 
-		if !fatalCalled {
-			t.Error("expected logFatalf to be called")
+		if err == nil {
+			t.Error("expected error, got nil")
+		}
+		if !strings.Contains(err.Error(), "failed to run migrations") {
+			t.Errorf("expected error about migrations, got %v", err)
 		}
 	})
 
@@ -112,8 +136,11 @@ func TestInitDB(t *testing.T) {
 			return db, nil
 		}
 
-		InitDB()
-
+		_, err := InitDB()
+		// Count error is logged but not fatal
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
 		if !printfCalled {
 			t.Error("expected logPrintf to be called")
 		}
@@ -132,8 +159,11 @@ func TestInitDB(t *testing.T) {
 			return db, nil
 		}
 
-		InitDB()
-
+		_, err := InitDB()
+		// Create error now causes RunMigrations to fail, which causes InitDB to return an error
+		if err == nil {
+			t.Fatal("expected error from InitDB, got nil")
+		}
 		if !printfCalled {
 			t.Error("expected logPrintf to be called")
 		}
@@ -152,8 +182,11 @@ func TestInitDB(t *testing.T) {
 			return db, nil
 		}
 
-		InitDB()
-
+		_, err := InitDB()
+		// RowsAffected=0 is logged but not fatal
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
 		if !printfCalled {
 			t.Error("expected logPrintf to be called")
 		}
@@ -295,6 +328,97 @@ func TestSaveConfig(t *testing.T) {
 		err := SaveConfig(&models.Config{Language: "es"})
 		if err == nil {
 			t.Error("expected error, got nil")
+		}
+	})
+}
+
+func TestRunMigrations(t *testing.T) {
+	oldDB := GetDB()
+	defer func() { SetDB(oldDB) }()
+
+	t.Run("CreatesMigrationVersionsTable", func(t *testing.T) {
+		db, _ := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+		SetDB(db)
+
+		err := RunMigrations(db)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if !db.Migrator().HasTable(&models.MigrationVersion{}) {
+			t.Error("expected migration_versions table to exist")
+		}
+	})
+
+	t.Run("RecordsAppliedMigrations", func(t *testing.T) {
+		db, _ := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+		SetDB(db)
+
+		err := RunMigrations(db)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		var count int64
+		db.Model(&models.MigrationVersion{}).Count(&count)
+		if count == 0 {
+			t.Error("expected migration versions to be recorded")
+		}
+	})
+
+	t.Run("Idempotent_RunsTwiceNoError", func(t *testing.T) {
+		db, _ := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+		SetDB(db)
+
+		err := RunMigrations(db)
+		if err != nil {
+			t.Fatalf("first run failed: %v", err)
+		}
+
+		err = RunMigrations(db)
+		if err != nil {
+			t.Fatalf("second run failed: %v", err)
+		}
+
+		// Should not duplicate migration records
+		var count int64
+		db.Model(&models.MigrationVersion{}).Where("version = ?", 0).Count(&count)
+		if count != 1 {
+			t.Errorf("expected 1 record for migration 0, got %d", count)
+		}
+	})
+
+	t.Run("MigrationFailure", func(t *testing.T) {
+		db, _ := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+		SetDB(db)
+
+		// Save and restore the original migrations
+		originalMigrations := migrations
+		defer func() { migrations = originalMigrations }()
+
+		migrations = []migrationDef{
+			{
+				Version: 0,
+				Name:    "baseline",
+				Up: func(db *gorm.DB) error {
+					return db.AutoMigrate(&models.Config{})
+				},
+			},
+			{
+				Version: 99,
+				Name:    "failing_migration",
+				Up: func(db *gorm.DB) error {
+					return errors.New("intentional failure")
+				},
+			},
+		}
+
+		err := RunMigrations(db)
+		if err == nil {
+			t.Error("expected error from failing migration, got nil")
+		}
+		if !strings.Contains(err.Error(), "intentional failure") {
+			t.Errorf("expected error to contain 'intentional failure', got %v", err)
 		}
 	})
 }

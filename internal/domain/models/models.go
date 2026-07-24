@@ -15,6 +15,7 @@ type Config struct {
 	SMTPUser       string `json:"smtp_user"`
 	SMTPPass       string `json:"smtp_pass"`
 	SMTPSender     string `json:"smtp_sender"`
+	SMTPEncryption string `json:"smtp_encryption"` // "starttls" (default), "tls", "none"
 	NewsletterTime string `json:"newsletter_time"`
 	RecCount       int    `json:"rec_count"`
 	Language       string `json:"language"`
@@ -52,4 +53,11 @@ type Blacklist struct {
 	MediaID   string `gorm:"uniqueIndex"`
 	MediaType string
 	ExpiresAt int64
+}
+
+// MigrationVersion tracks which numbered migrations have been applied.
+type MigrationVersion struct {
+	gorm.Model
+	Version int `gorm:"uniqueIndex"`
+	Name    string
 }

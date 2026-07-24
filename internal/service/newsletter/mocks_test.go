@@ -1,17 +1,20 @@
 package newsletter
 
 import (
+	"context"
+
 	"taunewlety/internal/platform/clients"
 )
 
 type mockTautulliClient struct {
-	GetRecentlyAddedFn     func(count int) ([]map[string]interface{}, error)
-	GetTopGenresFn         func(count int) ([]string, error)
+	GetRecentlyAddedFn func(count int) ([]clients.RecentlyAddedItem, error)
+	GetTopGenresFn     func(count int) ([]string, error)
 	GetWatchHistoryBatchFn func(ratingKeys []string) (map[string]clients.WatchInfo, error)
-	GetTopWatchedFn        func(count int) ([]map[string]interface{}, error)
+	GetTopWatchedFn    func(count int) ([]clients.HomeStatsItem, error)
+	GetHomeStatsAllFn  func(count int) (*clients.HomeStatsResult, error)
 }
 
-func (m *mockTautulliClient) GetRecentlyAdded(count int) ([]map[string]interface{}, error) {
+func (m *mockTautulliClient) GetRecentlyAdded(count int) ([]clients.RecentlyAddedItem, error) {
 	if m.GetRecentlyAddedFn != nil {
 		return m.GetRecentlyAddedFn(count)
 	}
@@ -32,20 +35,27 @@ func (m *mockTautulliClient) GetWatchHistoryBatch(ratingKeys []string) (map[stri
 	return nil, nil
 }
 
-func (m *mockTautulliClient) GetTopWatched(count int) ([]map[string]interface{}, error) {
+func (m *mockTautulliClient) GetTopWatched(count int) ([]clients.HomeStatsItem, error) {
 	if m.GetTopWatchedFn != nil {
 		return m.GetTopWatchedFn(count)
 	}
 	return nil, nil
 }
 
-type mockOllamaClient struct {
-	GenerateFn func(prompt string) (string, int, int, error)
+func (m *mockTautulliClient) GetHomeStatsAll(count int) (*clients.HomeStatsResult, error) {
+	if m.GetHomeStatsAllFn != nil {
+		return m.GetHomeStatsAllFn(count)
+	}
+	return &clients.HomeStatsResult{}, nil
 }
 
-func (m *mockOllamaClient) Generate(prompt string) (string, int, int, error) {
+type mockOllamaClient struct {
+	GenerateFn func(ctx context.Context, prompt string) (string, int, int, error)
+}
+
+func (m *mockOllamaClient) Generate(ctx context.Context, prompt string) (string, int, int, error) {
 	if m.GenerateFn != nil {
-		return m.GenerateFn(prompt)
+		return m.GenerateFn(ctx, prompt)
 	}
 	return "", 0, 0, nil
 }

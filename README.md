@@ -109,7 +109,63 @@ This will start:
 Navigate to the **Subscribers** tab to add email addresses manually. Users can unsubscribe at any time via the link at the bottom of each newsletter.
 
 ### 6. Automated Schedule
-The application includes a built-in scheduler. You can define the delivery frequency in the **Settings** dashboard (uses Standard Cron syntax).
+The application includes a built-in scheduler. You can define the delivery time in the **Settings** dashboard (Newsletter Time field, HH:MM 24h format). The cron schedule is automatically derived from this setting.
+
+---
+
+## 🔒 Production Deployment & TLS
+
+### Option A: Reverse Proxy (Recommended)
+
+For production, it is **strongly recommended** to use a reverse proxy for TLS termination rather than exposing the Go server directly. This provides better security, certificate management, and HTTP/2 support.
+
+#### Nginx Example
+
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name taunewlety.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/taunewlety.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/taunewlety.example.com/privkey.pem;
+
+    # Modern TLS configuration
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
+
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+#### Caddy Example
+
+Caddy provides automatic HTTPS via Let's Encrypt:
+
+```
+taunewlety.example.com {
+    reverse_proxy localhost:8080
+}
+```
+
+### Option B: Direct TLS
+
+If you prefer to skip the reverse proxy, TauNewlety can serve TLS directly. Set both environment variables:
+
+```bash
+TLS_CERT=/path/to/cert.pem
+TLS_KEY=/path/to/key.pem
+```
+
+When both `TLS_CERT` and `TLS_KEY` are set, the server starts with `ListenAndServeTLS` instead of plain HTTP. This is suitable for simple deployments but lacks features like automatic certificate renewal that a reverse proxy provides.
+
+> **Important**: Never expose the application over plain HTTP in production. Always use HTTPS/TLS to protect session cookies and credentials.
 
 ---
 

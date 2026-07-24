@@ -2,14 +2,16 @@ package newsletter
 
 import (
 	"fmt"
+	"math/rand"
 	"strings"
 	"taunewlety/internal/domain/models"
-	"taunewlety/internal/platform/database"
+	"taunewlety/internal/platform/clients"
 	"time"
 )
 
+// Candidate represents a recommended item with its reason tags.
 type Candidate struct {
-	Item map[string]interface{}
+	Item clients.RecentlyAddedItem
 	Tags []string
 }
 
@@ -19,12 +21,19 @@ func (s *NewsletterService) MixRecommendations() ([]Candidate, error) {
 		return nil, err
 	}
 
-	topGenres, _ := s.Tautulli.GetTopGenres(5)
+	// Single API call to get both top genres and top watched (B-11 fix)
+	homeStats, _ := s.Tautulli.GetHomeStatsAll(20)
+	var topGenres []string
+	var topWatched []clients.HomeStatsItem
+	if homeStats != nil {
+		topGenres = homeStats.TopGenres
+		topWatched = homeStats.TopWatched
+	}
 
 	// Collect rating keys to batch query watch history
 	ratingKeys := make([]string, len(candidates))
 	for i, item := range candidates {
-		ratingKeys[i] = fmt.Sprintf("%v", item["rating_key"])
+		ratingKeys[i] = fmt.Sprintf("%d", item.RatingKey)
 	}
 
 	watchCounts, _ := s.Tautulli.GetWatchHistoryBatch(ratingKeys)
@@ -35,20 +44,17 @@ func (s *NewsletterService) MixRecommendations() ([]Candidate, error) {
 	var fresh []Candidate
 
 	for _, item := range candidates {
-		ratingKey := fmt.Sprintf("%v", item["rating_key"])
+		ratingKey := fmt.Sprintf("%d", item.RatingKey)
 
 		var bl models.Blacklist
-		result := database.GetDB().Where("media_id = ? AND expires_at > ?", ratingKey, time.Now().Unix()).First(&bl)
+		result := s.DB.Where("media_id = ? AND expires_at > ?", ratingKey, time.Now().Unix()).First(&bl)
 		if result.Error == nil {
 			continue
 		}
 
 		var allTags []string
 
-		ratingStr := fmt.Sprintf("%v", item["rating"])
-		var rating float64
-		_, _ = fmt.Sscanf(ratingStr, "%f", &rating)
-		if rating >= 8.0 {
+		if item.Rating >= 8.0 {
 			allTags = append(allTags, "Critically Acclaimed")
 			tagsCopy := make([]string, len(allTags))
 			copy(tagsCopy, allTags)
@@ -67,7 +73,7 @@ func (s *NewsletterService) MixRecommendations() ([]Candidate, error) {
 			trending = append(trending, Candidate{item, tagsCopy})
 		}
 
-		genresStr := fmt.Sprintf("%v", item["genres"])
+		genresStr := item.Genres
 		isGenreMatch := false
 		for _, tg := range topGenres {
 			if strings.Contains(strings.ToLower(genresStr), strings.ToLower(tg)) {
@@ -98,7 +104,7 @@ func (s *NewsletterService) MixRecommendations() ([]Candidate, error) {
 		for _, c := range list {
 			alreadySelected := false
 			for _, s := range finalSelection {
-				if s.Item["rating_key"] == c.Item["rating_key"] {
+				if s.Item.RatingKey == c.Item.RatingKey {
 					alreadySelected = true
 					break
 				}
@@ -118,11 +124,16 @@ func (s *NewsletterService) MixRecommendations() ([]Candidate, error) {
 	appendLimited(genreMatch, limit)
 	appendLimited(fresh, limit)
 
-	// Add "Surprise Me"
-	top, _ := s.Tautulli.GetTopWatched(20)
-	if len(top) > 0 {
-		randItem := top[time.Now().Unix()%int64(len(top))]
-		finalSelection = append(finalSelection, Candidate{randItem, []string{"Surprise Me!"}})
+	// Add "Surprise Me" — use topWatched from the single GetHomeStatsAll call
+	if len(topWatched) > 0 {
+		randItem := topWatched[rand.Intn(len(topWatched))]
+		// Convert HomeStatsItem to RecentlyAddedItem for the Candidate
+		surpriseItem := clients.RecentlyAddedItem{
+			RatingKey: randItem.RatingKey,
+			Title:     randItem.Title,
+			MediaType: "movie",
+		}
+		finalSelection = append(finalSelection, Candidate{surpriseItem, []string{"Surprise Me!"}})
 	}
 
 	return finalSelection, nil

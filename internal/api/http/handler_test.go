@@ -4,10 +4,11 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 func TestNewHandler(t *testing.T) {
-	h := NewHandler()
+	h := NewHandler(nil)
 	if h == nil {
 		t.Fatal("NewHandler returned nil")
 	}
@@ -16,12 +17,13 @@ func TestNewHandler(t *testing.T) {
 func TestRegisterHandlers(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	
+
 	// We need to provide a secret for sessions middleware used in AuthRequired
 	t.Setenv("SESSION_SECRET", "test-secret")
-	
-	RegisterHandlers(r)
-	
+
+	var db *gorm.DB // nil is fine for route registration tests
+	RegisterHandlers(r, db)
+
 	// Verify some routes are registered
 	routes := r.Routes()
 	expectedRoutes := []struct {
@@ -33,9 +35,12 @@ func TestRegisterHandlers(t *testing.T) {
 		{"GET", "/unsubscribe"},
 		{"POST", "/unsubscribe"},
 		{"GET", "/"},
+		{"GET", "/logout"},
 		{"POST", "/settings"},
+		{"GET", "/subscribers/export"},
+		{"POST", "/subscribers/import"},
 	}
-	
+
 	for _, tt := range expectedRoutes {
 		found := false
 		for _, route := range routes {

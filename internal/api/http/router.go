@@ -1,22 +1,23 @@
 package http
 
 import (
+	"fmt"
 	"html/template"
-	"log"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"taunewlety/internal/platform/sanitize"
+	"time"
 
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
+	"gorm.io/gorm"
 )
 
-var (
-	getwd    = os.Getwd
-	logFatal = log.Fatal
-)
+var getwd = os.Getwd
 
 // resolveWebDir locates the "web" asset directory so the server works
 // regardless of the current working directory (project root in production,
@@ -41,17 +42,63 @@ func resolveWebDir() string {
 	return "web"
 }
 
-func SetupRouter() *gin.Engine {
-	r := gin.Default()
+// templateFuncMap returns the set of functions available in Go templates.
+func templateFuncMap() template.FuncMap {
+	return template.FuncMap{
+		"sanitizeHTML": func(input string) template.HTML {
+			// #nosec G203
+			return template.HTML(sanitize.HTML(input))
+		},
+		"iteratePages": func(totalPages int) []int {
+			pages := make([]int, totalPages)
+			for i := range pages {
+				pages[i] = i + 1
+			}
+			return pages
+		},
+		"add": func(a, b int) int {
+			return a + b
+		},
+		"sub": func(a, b int) int {
+			return a - b
+		},
+		"formatTime": func(unix int64) string {
+			if unix == 0 {
+				return "Never"
+			}
+			return time.Unix(unix, 0).UTC().Format(time.RFC3339)
+		},
+		"seq": func(n int) []int {
+			result := make([]int, n)
+			for i := range result {
+				result[i] = i + 1
+			}
+			return result
+		},
+	}
+}
+
+// SetupRouter creates and configures the gin Engine with all routes.
+// It returns an error if required environment variables are missing,
+// instead of calling log.Fatal which would bypass deferred cleanup.
+// The logger parameter is used for structured HTTP request logging via
+// the GinZapLogger middleware. Pass zap.NewNop() in tests to discard logs.
+func SetupRouter(db *gorm.DB, logger *zap.Logger) (*gin.Engine, error) {
+	r := gin.New()
 
 	// Best practice: Set trusted proxies to nil to disable by default.
 	// This prevents spoofing of client IP addresses.
 	_ = r.SetTrustedProxies(nil)
 
+	// Replace gin.Default() middleware with zap-integrated logging,
+	// gin recovery, and security headers.
+	r.Use(GinZapLogger(logger))
+	r.Use(gin.Recovery())
+	r.Use(SecurityHeaders())
+
 	sessionSecret := os.Getenv("SESSION_SECRET")
 	if sessionSecret == "" {
-		logFatal("SESSION_SECRET environment variable is required but was not set")
-		return nil
+		return nil, fmt.Errorf("SESSION_SECRET environment variable is required but was not set")
 	}
 	store := cookie.NewStore([]byte(sessionSecret))
 
@@ -71,14 +118,19 @@ func SetupRouter() *gin.Engine {
 	r.StaticFile("/favicon.svg", filepath.Join(staticDir, "favicon.svg"))
 
 	r.SetHTMLTemplate(template.Must(
-		template.New("").Funcs(template.FuncMap{
-			"sanitizeHTML": func(input string) template.HTML {
-				return template.HTML(sanitize.HTML(input))
-			},
-		}).ParseGlob(filepath.Join(webDir, "template", "*")),
+		template.New("").Funcs(templateFuncMap()).ParseGlob(filepath.Join(webDir, "template", "*")),
 	))
 
-	RegisterHandlers(r)
+	RegisterHandlers(r, db)
 
-	return r
+	return r, nil
+}
+
+// Helper function used in tests to parse page/per_page from query strings.
+func parseIntDefault(s string, defaultVal int) int {
+	v, err := strconv.Atoi(s)
+	if err != nil || v < 1 {
+		return defaultVal
+	}
+	return v
 }

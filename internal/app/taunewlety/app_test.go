@@ -256,9 +256,13 @@ func TestApp_Scheduler(t *testing.T) {
 	defer os.Unsetenv("DB_PATH")
 
 	t.Run("Cron Setup Error", func(t *testing.T) {
-		oldSchedule := cronSchedule
-		cronSchedule = "invalid schedule string"
-		defer func() { cronSchedule = oldSchedule }()
+		database.InitDB()
+		// Set an invalid newsletter time in the config to trigger a cron parse error
+		config, _ := database.GetConfig()
+		if config != nil {
+			config.NewsletterTime = "invalid"
+			_ = database.SaveConfig(config)
+		}
 
 		app := NewApp()
 		app.setupScheduler()
@@ -306,7 +310,7 @@ func TestApp_Scheduler(t *testing.T) {
 							"response": map[string]interface{}{
 								"data": map[string]interface{}{
 									"recently_added": []interface{}{
-										map[string]interface{}{"rating_key": "1", "title": "T"},
+										map[string]interface{}{"rating_key": 1, "title": "T"},
 									},
 								},
 							},
@@ -373,4 +377,29 @@ func TestLoggerFatal(t *testing.T) {
 
 		loggerFatal(logger, "test fatal message")
 	})
+}
+
+func TestBuildCronSchedule(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{name: "Valid 9am", input: "09:00", expected: "00 09 * * *"},
+		{name: "Valid 3pm", input: "15:30", expected: "30 15 * * *"},
+		{name: "Midnight", input: "00:00", expected: "00 00 * * *"},
+		{name: "Empty string defaults to 9am", input: "", expected: "0 9 * * *"},
+		{name: "Invalid no colon", input: "0900", expected: "0 9 * * *"},
+		{name: "Invalid too many parts", input: "09:00:00", expected: "0 9 * * *"},
+		{name: "Single digit hour", input: "9:00", expected: "00 9 * * *"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := buildCronSchedule(tt.input)
+			if result != tt.expected {
+				t.Errorf("buildCronSchedule(%q) = %q, want %q", tt.input, result, tt.expected)
+			}
+		})
+	}
 }
