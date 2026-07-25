@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"taunewlety/internal/domain/models"
 	"taunewlety/internal/service/newsletter"
@@ -54,18 +55,38 @@ func (h *Handler) NewsletterSendManual(c *gin.Context) {
 		return
 	}
 
-	recipients := make([]string, 0, len(subscribers)+1)
-	for _, sub := range subscribers {
-		recipients = append(recipients, sub.Email)
-	}
-	// Also send to admin notification email as a backup
-	if notifyEmail := os.Getenv("NOTIFY_EMAIL"); notifyEmail != "" {
-		recipients = append(recipients, notifyEmail)
-	}
+	// The admin notification address is a backup copy, not a second delivery.
+	recipients := collectRecipients(subscribers, os.Getenv("NOTIFY_EMAIL"))
 
-	go sendBulkEmail(svc, recipients, subject, body)
+	go sendBulkEmail(svc.SendEmail, recipients, subject, body)
 
 	c.JSON(http.StatusOK, gin.H{"status": "Sent", "recipients": len(recipients)})
+}
+
+// collectRecipients builds the delivery list from the active subscribers plus
+// the optional admin notification address, deduplicated so nobody receives the
+// newsletter twice — most commonly when NOTIFY_EMAIL is also a subscriber.
+// Comparison ignores case and surrounding whitespace; the original spelling is
+// what gets sent.
+func collectRecipients(subscribers []models.Subscriber, notifyEmail string) []string {
+	recipients := make([]string, 0, len(subscribers)+1)
+	seen := make(map[string]bool, len(subscribers)+1)
+
+	add := func(email string) {
+		key := strings.ToLower(strings.TrimSpace(email))
+		if key == "" || seen[key] {
+			return
+		}
+		seen[key] = true
+		recipients = append(recipients, email)
+	}
+
+	for _, sub := range subscribers {
+		add(sub.Email)
+	}
+	add(notifyEmail)
+
+	return recipients
 }
 
 // maxConcurrentSends bounds how many SMTP conversations run at once so a
@@ -75,8 +96,10 @@ const maxConcurrentSends = 5
 
 // sendBulkEmail delivers the newsletter to every recipient using a bounded
 // pool of workers. Failures are counted rather than logged individually so
-// subscriber addresses never reach the log.
-func sendBulkEmail(svc *newsletter.NewsletterService, recipients []string, subject, body string) {
+// subscriber addresses never reach the log. send is normally
+// NewsletterService.SendEmail; it is a parameter so tests can drive the
+// failure and panic paths without a live SMTP server.
+func sendBulkEmail(send func(to, subject, body string) error, recipients []string, subject, body string) {
 	sem := make(chan struct{}, maxConcurrentSends)
 	var wg sync.WaitGroup
 	var mu sync.Mutex
@@ -88,7 +111,18 @@ func sendBulkEmail(svc *newsletter.NewsletterService, recipients []string, subje
 		go func(a string) {
 			defer wg.Done()
 			defer func() { <-sem }()
-			if err := svc.SendEmail(a, subject, body); err != nil {
+			// This runs detached from the request, so gin's recovery
+			// middleware cannot help: an unrecovered panic here would take
+			// the whole process down mid-send.
+			defer func() {
+				if r := recover(); r != nil {
+					mu.Lock()
+					failed++
+					mu.Unlock()
+					log.Printf("Manual send: recovered from panic while sending a message: %v", r)
+				}
+			}()
+			if err := send(a, subject, body); err != nil {
 				mu.Lock()
 				failed++
 				mu.Unlock()

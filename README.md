@@ -89,8 +89,9 @@ Set the following mandatory variables:
 ### 3. Deploy with Docker Compose
 Run the stack in the background:
 ```bash
-docker-compose -f deployments/docker/docker-compose.yml up -d
+docker-compose --env-file .env -f deployments/docker/docker-compose.yml up -d
 ```
+`--env-file` is required: with `-f` pointing at another directory, Compose looks for `.env` next to the Compose file rather than in the project root, and startup fails on the required `APP_PASS`/`DB_PASSWORD` variables.
 This will start:
 1.  **TauNewlety**: The main application logic.
 2.  **PostgreSQL**: Persistent relational data store.
@@ -121,6 +122,13 @@ The application includes a built-in scheduler. You can define the delivery time 
 
 For production, it is **strongly recommended** to use a reverse proxy for TLS termination rather than exposing the Go server directly. This provides better security, certificate management, and HTTP/2 support.
 
+The upstream address depends on where the proxy runs:
+
+- **Proxy installed on the host** → `127.0.0.1:8080`, the address the Compose file publishes.
+- **Proxy running as a Compose service** → `app:8080`, resolved over the shared Docker network. In this case also remove the `ports` mapping from the `app` service, so the container is reachable only from inside the network.
+
+The examples below use the host form; swap the upstream for `app:8080` when the proxy is a Compose service.
+
 #### Nginx Example
 
 ```nginx
@@ -137,6 +145,7 @@ server {
     ssl_prefer_server_ciphers on;
 
     location / {
+        # Compose service instead of host install: http://app:8080
         proxy_pass http://127.0.0.1:8080;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -152,11 +161,12 @@ Caddy provides automatic HTTPS via Let's Encrypt:
 
 ```
 taunewlety.example.com {
-    reverse_proxy localhost:8080
+    # Compose service instead of host install: reverse_proxy app:8080
+    reverse_proxy 127.0.0.1:8080
 }
 ```
 
-The Compose file publishes the app on `127.0.0.1:8080` rather than `0.0.0.0:8080`, so the only route in from the network is through your proxy. If the proxy runs in Docker too, attach it to the Compose network and remove the host port mapping entirely.
+The Compose file publishes the app on `127.0.0.1:8080` rather than `0.0.0.0:8080`, so the only route in from the network is through your proxy.
 
 ### Option B: Direct TLS
 

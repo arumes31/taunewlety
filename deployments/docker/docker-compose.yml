@@ -14,13 +14,16 @@ services:
       - SESSION_SECRET=${SESSION_SECRET:?SESSION_SECRET is required}
       - NOTIFY_EMAIL=${NOTIFY_EMAIL}
       - DB_TYPE=postgres
-      - DB_HOST=db
+      # Defaults to the bundled db service; override in .env to point at an
+      # external PostgreSQL server.
+      - DB_HOST=${DB_HOST:-db}
+      - DB_PORT=${DB_PORT:-5432}
       - DB_USER=${DB_USER:-tauuser}
       - DB_PASSWORD=${DB_PASSWORD:?DB_PASSWORD is required}
       - DB_NAME=${DB_NAME:-taunewlety}
-      - DB_PORT=5432
       # The bundled Postgres serves no TLS and is only reachable on this
-      # internal network. Override in .env when using an external database.
+      # internal network. Set DB_SSLMODE=require (or stricter) in .env
+      # alongside DB_HOST when using an external database.
       - DB_SSLMODE=${DB_SSLMODE:-disable}
       # Direct HTTPS: set both in .env (to container paths) and uncomment the
       # certificate mounts below.

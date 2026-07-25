@@ -23,12 +23,15 @@ func (h *Handler) SubscriberAdd(c *gin.Context) {
 		return
 	}
 
-	// Validate email format
-	_, err := mail.ParseAddress(email)
+	// Validate the email format, and store the parsed address so this path
+	// normalizes exactly as the CSV import does — otherwise the same person
+	// could be stored twice in two different spellings.
+	parsed, err := mail.ParseAddress(email)
 	if err != nil {
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Invalid email address format"})
 		return
 	}
+	email = parsed.Address
 
 	// Check if already exists to avoid duplicates
 	var count int64
@@ -230,12 +233,16 @@ func (h *Handler) SubscribersImport(c *gin.Context) {
 			continue
 		}
 
-		// Validate email format. The address itself is never logged.
-		if _, err := mail.ParseAddress(email); err != nil {
+		// Validate the email format. The address itself is never logged.
+		// Store the parsed address so a row written as `Bob <bob@x.com>`
+		// normalizes to `bob@x.com` and matches the duplicate check.
+		parsed, err := mail.ParseAddress(email)
+		if err != nil {
 			log.Printf("Skipping invalid email address on CSV row %d", row)
 			skipped++
 			continue
 		}
+		email = parsed.Address
 
 		// Check if already exists
 		var count int64

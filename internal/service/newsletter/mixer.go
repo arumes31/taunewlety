@@ -15,6 +15,15 @@ type Candidate struct {
 	Tags []string
 }
 
+// isBlacklisted reports whether a media item is currently suppressed. A
+// lookup error is treated as "not blacklisted" so a database hiccup cannot
+// empty the newsletter.
+func (s *NewsletterService) isBlacklisted(ratingKey string) bool {
+	var bl models.Blacklist
+	result := s.DB.Where("media_id = ? AND expires_at > ?", ratingKey, time.Now().Unix()).First(&bl)
+	return result.Error == nil
+}
+
 func (s *NewsletterService) MixRecommendations() ([]Candidate, error) {
 	candidates, err := s.Tautulli.GetRecentlyAdded(100)
 	if err != nil {
@@ -46,9 +55,7 @@ func (s *NewsletterService) MixRecommendations() ([]Candidate, error) {
 	for _, item := range candidates {
 		ratingKey := fmt.Sprintf("%d", item.RatingKey)
 
-		var bl models.Blacklist
-		result := s.DB.Where("media_id = ? AND expires_at > ?", ratingKey, time.Now().Unix()).First(&bl)
-		if result.Error == nil {
+		if s.isBlacklisted(ratingKey) {
 			continue
 		}
 
@@ -133,6 +140,12 @@ func (s *NewsletterService) MixRecommendations() ([]Candidate, error) {
 		surprises := make([]Candidate, 0, len(topWatched))
 		for i := 0; i < len(topWatched); i++ {
 			item := topWatched[(start+i)%len(topWatched)]
+			// Top-watched items skip the loop above, so they need the same
+			// blacklist check — otherwise a suppressed title can reappear
+			// here as the surprise.
+			if s.isBlacklisted(fmt.Sprintf("%d", item.RatingKey)) {
+				continue
+			}
 			surprises = append(surprises, Candidate{
 				clients.RecentlyAddedItem{
 					RatingKey: item.RatingKey,
