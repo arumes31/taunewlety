@@ -26,7 +26,11 @@ type LogRingBuffer struct {
 }
 
 // NewLogRingBuffer creates a new ring buffer with the given capacity.
+// A non-positive size is clamped to 1 so Add never divides by zero.
 func NewLogRingBuffer(size int) *LogRingBuffer {
+	if size < 1 {
+		size = 1
+	}
 	return &LogRingBuffer{
 		entries: make([]LogEntry, size),
 		size:    size,

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"mime"
@@ -13,6 +14,7 @@ import (
 	"net/smtp"
 	"net/url"
 	"strings"
+	"time"
 )
 
 func (s *NewsletterService) SendEmail(to string, subject string, body string) error {
@@ -127,16 +129,42 @@ var smtpSendMailNoAuth = func(addr string, from string, to []string, msg []byte)
 	return c.Quit()
 }
 
+// notifyHTTPClient posts webhook notifications. http.DefaultClient has no
+// timeout, so an unresponsive webhook host would otherwise block a newsletter
+// run indefinitely.
+var notifyHTTPClient = &http.Client{Timeout: 10 * time.Second}
+
 // discordHTTPPost is a variable to allow mocking in tests.
 // #nosec G107
 var discordHTTPPost = func(webhookURL string, contentType string, body *bytes.Reader) (*http.Response, error) {
-	return http.Post(webhookURL, contentType, body)
+	return notifyHTTPClient.Post(webhookURL, contentType, body)
 }
 
 // telegramHTTPPost is a variable to allow mocking in tests.
 // #nosec G107
 var telegramHTTPPost = func(apiURL string, contentType string, body *bytes.Reader) (*http.Response, error) {
-	return http.Post(apiURL, contentType, body)
+	return notifyHTTPClient.Post(apiURL, contentType, body)
+}
+
+// redactSecret removes a secret (e.g. a Telegram bot token) from an error
+// message. Transport errors wrap the request URL, which for Telegram embeds
+// the bot token in its path.
+func redactSecret(err error, secret string) error {
+	if err == nil || secret == "" {
+		return err
+	}
+	msg := strings.ReplaceAll(err.Error(), secret, "[REDACTED]")
+	if msg == err.Error() {
+		return err
+	}
+	return errors.New(msg)
+}
+
+// isSuccessStatus reports whether an HTTP status indicates the notification
+// was accepted. A 4xx/5xx reply means the message was not delivered, even
+// though the request itself succeeded.
+func isSuccessStatus(code int) bool {
+	return code >= 200 && code < 300
 }
 
 // DiscordPayload represents the JSON body sent to a Discord webhook.
@@ -169,6 +197,9 @@ func (s *NewsletterService) SendNotifications(subject string, body string) error
 			if err != nil {
 				log.Printf("Failed to send Discord notification: %v", err)
 			} else {
+				if !isSuccessStatus(resp.StatusCode) {
+					log.Printf("Failed to send Discord notification: webhook returned status %d", resp.StatusCode)
+				}
 				_ = resp.Body.Close()
 			}
 		}
@@ -187,8 +218,12 @@ func (s *NewsletterService) SendNotifications(subject string, body string) error
 			apiURL := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", s.Config.TelegramBotTok)
 			resp, err := telegramHTTPPost(apiURL, "application/json", bytes.NewReader(jsonData))
 			if err != nil {
-				log.Printf("Failed to send Telegram notification: %v", err)
+				// The error wraps apiURL, which contains the bot token.
+				log.Printf("Failed to send Telegram notification: %v", redactSecret(err, s.Config.TelegramBotTok))
 			} else {
+				if !isSuccessStatus(resp.StatusCode) {
+					log.Printf("Failed to send Telegram notification: API returned status %d", resp.StatusCode)
+				}
 				_ = resp.Body.Close()
 			}
 		}

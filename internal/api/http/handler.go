@@ -60,7 +60,6 @@ func RegisterHandlers(r *gin.Engine, db *gorm.DB) {
 		public.POST("/login", LoginRateLimit(), h.LoginPost)
 		public.GET("/unsubscribe", h.UnsubscribeGet)
 		public.POST("/unsubscribe", h.UnsubscribePost)
-		public.GET("/api/logs", h.LogsGet)
 	}
 
 	// Authorized routes (auth + CSRF required)
@@ -69,7 +68,11 @@ func RegisterHandlers(r *gin.Engine, db *gorm.DB) {
 	authorized.Use(CSRFProtection())
 	{
 		authorized.GET("/", h.DashboardGet)
-		authorized.GET("/logout", h.LogoutGet)
+		// Logout is a POST so it cannot be triggered by a cross-site GET.
+		authorized.POST("/logout", h.LogoutGet)
+		// The in-memory log buffer can contain operational detail, so it is
+		// only readable by an authenticated dashboard session.
+		authorized.GET("/api/logs", h.LogsGet)
 		authorized.POST("/settings", h.SettingsPost)
 		authorized.POST("/subscribers", h.SubscriberAdd)
 		authorized.POST("/subscribers/delete", h.SubscriberDelete)

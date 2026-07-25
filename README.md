@@ -97,7 +97,9 @@ This will start:
 3.  **Ollama**: The local AI engine (will automatically pull `llama3.2:3b` on first start).
 
 ### 4. Application Configuration
-1.  Access the dashboard at `http://YOUR_SERVER_IP:8080`.
+1.  Access the dashboard at `http://127.0.0.1:8080`. The Compose file binds the
+    app to loopback on purpose — see [Production Deployment & TLS](#-production-deployment--tls)
+    for exposing it safely over HTTPS.
 2.  Log in using the credentials set in `.env`.
 3.  Go to **Settings** and configure:
     -   **Tautulli**: URL and API Key (found in Tautulli Settings > Web Interface).
@@ -154,6 +156,8 @@ taunewlety.example.com {
 }
 ```
 
+The Compose file publishes the app on `127.0.0.1:8080` rather than `0.0.0.0:8080`, so the only route in from the network is through your proxy. If the proxy runs in Docker too, attach it to the Compose network and remove the host port mapping entirely.
+
 ### Option B: Direct TLS
 
 If you prefer to skip the reverse proxy, TauNewlety can serve TLS directly. Set both environment variables:
@@ -164,6 +168,15 @@ TLS_KEY=/path/to/key.pem
 ```
 
 When both `TLS_CERT` and `TLS_KEY` are set, the server starts with `ListenAndServeTLS` instead of plain HTTP. This is suitable for simple deployments but lacks features like automatic certificate renewal that a reverse proxy provides.
+
+Under Docker Compose, the paths must point *inside* the container. Put the certificate and key in `deployments/docker/certs/`, uncomment the read-only mounts in the `app` service of `docker-compose.yml`, and set the container paths in `.env`:
+
+```bash
+TLS_CERT=/certs/cert.pem
+TLS_KEY=/certs/key.pem
+```
+
+The container healthcheck follows the same switch, probing `https://localhost:$PORT/health` whenever both variables are set.
 
 > **Important**: Never expose the application over plain HTTP in production. Always use HTTPS/TLS to protect session cookies and credentials.
 

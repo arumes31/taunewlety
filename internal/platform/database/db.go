@@ -14,12 +14,14 @@ import (
 	"gorm.io/gorm"
 )
 
-// escapeDSNValue escapes values for use in a PostgreSQL DSN key=value string.
+// escapeDSNValue quotes a value for a PostgreSQL DSN key=value string.
+// Inside a single-quoted value libpq treats a backslash as an escape
+// character, so both backslashes and single quotes are backslash-escaped —
+// SQL-style quote doubling would terminate the value early. Every other
+// character, including whitespace and newlines, is preserved verbatim.
 func escapeDSNValue(val string) string {
 	escaped := strings.ReplaceAll(val, "\\", "\\\\")
-	escaped = strings.ReplaceAll(escaped, "'", "''")
-	escaped = strings.ReplaceAll(escaped, "\n", "\\n")
-	escaped = strings.ReplaceAll(escaped, "\r", "\\r")
+	escaped = strings.ReplaceAll(escaped, "'", "\\'")
 	return "'" + escaped + "'"
 }
 

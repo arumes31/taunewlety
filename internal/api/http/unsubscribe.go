@@ -1,15 +1,12 @@
 package http
 
 import (
-	"fmt"
 	"log"
 	"net/http"
-	"net/smtp"
-	"net/url"
 	"strconv"
-	"strings"
 	"taunewlety/internal/domain/models"
 	"taunewlety/internal/platform/database"
+	"taunewlety/internal/service/newsletter"
 	"taunewlety/pkg"
 	"time"
 
@@ -174,7 +171,9 @@ func (h *Handler) UnsubscribePost(c *gin.Context) {
 
 // sendUnsubscribeConfirmationEmail sends a best-effort notification to the
 // subscriber confirming that they have been unsubscribed. Errors are logged
-// but do not affect the unsubscribe operation.
+// but do not affect the unsubscribe operation. Delivery goes through the
+// newsletter service's mailer so SMTPEncryption is honoured here too.
+// Recipient addresses are deliberately kept out of the logs.
 func sendUnsubscribeConfirmationEmail(email string) {
 	config, err := database.GetConfig()
 	if err != nil || config == nil {
@@ -183,34 +182,22 @@ func sendUnsubscribeConfirmationEmail(email string) {
 	}
 
 	if config.SMTPHost == "" || config.SMTPUser == "" {
-		log.Printf("Warning: SMTP not configured, skipping unsubscribe confirmation email to %s", email)
+		log.Printf("Warning: SMTP not configured, skipping unsubscribe confirmation email")
 		return
 	}
 
-	toSanitized := strings.NewReplacer("\r", "", "\n", "").Replace(email)
-	subscribeURL := fmt.Sprintf("%s/unsubscribe?email=%s", config.AppBaseURL, url.QueryEscape(toSanitized))
+	// The unsubscribe link is rendered by the shared mailer, which replaces
+	// this placeholder with a per-recipient URL.
+	body := "<html><body><p>Hello,</p>" +
+		"<p>You have been successfully unsubscribed from the TauNewlety newsletter. " +
+		"If you did not request this, you can re-subscribe through the application.</p>" +
+		"<p>If this was not you, please contact the server administrator.</p>" +
+		"<hr><p><small>Manage your subscription: " +
+		"<a href=\"{{.UnsubscribeURL}}\">{{.UnsubscribeURL}}</a></small></p>" +
+		"</body></html>"
 
-	subject := "Unsubscribe Confirmation"
-	body := fmt.Sprintf(
-		"<html><body><p>Hello,</p>"+
-			"<p>You have been successfully unsubscribed from the TauNewlety newsletter. "+
-			"If you did not request this, you can re-subscribe through the application.</p>"+
-			"<p>If this was not you, please contact the server administrator.</p>"+
-			"<hr><p><small>Manage your subscription: <a href=\"%s\">%s</a></small></p>"+
-			"</body></html>",
-		subscribeURL, subscribeURL,
-	)
-
-	auth := smtp.PlainAuth("", config.SMTPUser, config.SMTPPass, config.SMTPHost)
-	addr := fmt.Sprintf("%s:%d", config.SMTPHost, config.SMTPPort)
-
-	msg := []byte("To: " + toSanitized + "\r\n" +
-		"Subject: " + subject + "\r\n" +
-		"Content-Type: text/html; charset=UTF-8\r\n" +
-		"\r\n" +
-		body + "\r\n")
-
-	if err := smtp.SendMail(addr, auth, config.SMTPSender, []string{toSanitized}, msg); err != nil {
-		log.Printf("Warning: failed to send unsubscribe confirmation email to %s: %v", email, err)
+	svc := newsletter.NewNewsletterService(database.GetDB(), config)
+	if err := svc.SendEmail(email, "Unsubscribe Confirmation", body); err != nil {
+		log.Printf("Warning: failed to send unsubscribe confirmation email: %v", err)
 	}
 }

@@ -4,18 +4,31 @@ services:
       context: ../../
       dockerfile: deployments/docker/Dockerfile
     ports:
-      - "8080:8080"
+      # Bound to loopback so the app is not reachable from the network in a way
+      # that bypasses the TLS reverse proxy. Point the proxy at 127.0.0.1:8080,
+      # or drop this mapping entirely and attach the proxy to this network.
+      - "127.0.0.1:8080:8080"
     environment:
       - APP_USER=${APP_USER:?APP_USER is required}
       - APP_PASS=${APP_PASS:?APP_PASS is required}
-      - SESSION_SECRET=${SESSION_SECRET}
+      - SESSION_SECRET=${SESSION_SECRET:?SESSION_SECRET is required}
       - NOTIFY_EMAIL=${NOTIFY_EMAIL}
       - DB_TYPE=postgres
       - DB_HOST=db
       - DB_USER=${DB_USER:-tauuser}
-      - DB_PASSWORD=${DB_PASSWORD:-taupass}
+      - DB_PASSWORD=${DB_PASSWORD:?DB_PASSWORD is required}
       - DB_NAME=${DB_NAME:-taunewlety}
       - DB_PORT=5432
+      # The bundled Postgres serves no TLS and is only reachable on this
+      # internal network. Override in .env when using an external database.
+      - DB_SSLMODE=${DB_SSLMODE:-disable}
+      # Direct HTTPS: set both in .env (to container paths) and uncomment the
+      # certificate mounts below.
+      - TLS_CERT=${TLS_CERT:-}
+      - TLS_KEY=${TLS_KEY:-}
+    # volumes:
+    #   - ./certs/cert.pem:/certs/cert.pem:ro
+    #   - ./certs/key.pem:/certs/key.pem:ro
     depends_on:
       db:
         condition: service_healthy
@@ -26,7 +39,7 @@ services:
     image: postgres:16-alpine
     environment:
       - POSTGRES_USER=${DB_USER:-tauuser}
-      - POSTGRES_PASSWORD=${DB_PASSWORD:-taupass}
+      - POSTGRES_PASSWORD=${DB_PASSWORD:?DB_PASSWORD is required}
       - POSTGRES_DB=${DB_NAME:-taunewlety}
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -39,7 +52,9 @@ services:
   ollama:
     image: ollama/ollama:latest
     ports:
-      - "11434:11434"
+      # Loopback only: the Ollama API is unauthenticated, and the app reaches
+      # it over the internal network as http://ollama:11434 regardless.
+      - "127.0.0.1:11434:11434"
     volumes:
       - ollama_data:/root/.ollama
       - ../../scripts/sh/init-ollama.sh:/init-ollama.sh

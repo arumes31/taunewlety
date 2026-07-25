@@ -257,16 +257,25 @@ func TestApp_Scheduler(t *testing.T) {
 
 	t.Run("Cron Setup Error", func(t *testing.T) {
 		database.InitDB()
-		// Set an invalid newsletter time in the config to trigger a cron parse error
 		config, _ := database.GetConfig()
 		if config != nil {
-			config.NewsletterTime = "invalid"
+			config.NewsletterTime = "09:00"
 			_ = database.SaveConfig(config)
 		}
 
+		// buildCronSchedule now rejects non-numeric times and falls back to a
+		// valid default, so the AddFunc error branch is driven through the
+		// buildSchedule seam instead.
+		original := buildSchedule
+		buildSchedule = func(string) string { return "not a cron expression" }
+		defer func() { buildSchedule = original }()
+
 		app := NewApp()
 		app.setupScheduler()
-		// Should log error but not crash
+		// Should log the error but not crash, and register no job.
+		if len(app.cron.Entries()) != 0 {
+			t.Errorf("expected no cron entry for an invalid schedule, got %d", len(app.cron.Entries()))
+		}
 	})
 
 	t.Run("Job Execution Paths", func(t *testing.T) {
@@ -392,6 +401,13 @@ func TestBuildCronSchedule(t *testing.T) {
 		{name: "Invalid no colon", input: "0900", expected: "0 9 * * *"},
 		{name: "Invalid too many parts", input: "09:00:00", expected: "0 9 * * *"},
 		{name: "Single digit hour", input: "9:00", expected: "00 9 * * *"},
+		{name: "Non-numeric parts", input: "ab:cd", expected: "0 9 * * *"},
+		{name: "Hour out of range", input: "24:00", expected: "0 9 * * *"},
+		{name: "Minute out of range", input: "12:60", expected: "0 9 * * *"},
+		{name: "Signed hour", input: "+5:00", expected: "0 9 * * *"},
+		{name: "Padded minute", input: "12: 5", expected: "0 9 * * *"},
+		{name: "Empty hour", input: ":30", expected: "0 9 * * *"},
+		{name: "Last valid minute", input: "23:59", expected: "59 23 * * *"},
 	}
 
 	for _, tt := range tests {

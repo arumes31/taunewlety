@@ -384,7 +384,7 @@ func TestTautulliClient_GetTopWatched(t *testing.T) {
 						},
 						map[string]interface{}{
 							"stat_id": "top_tv",
-							"rows": nil, // Case for missing rows
+							"rows":    nil, // Case for missing rows
 						},
 						map[string]interface{}{
 							"stat_id": "other",
@@ -394,7 +394,7 @@ func TestTautulliClient_GetTopWatched(t *testing.T) {
 				},
 			},
 			want: []HomeStatsItem{
-				{Title: "Movie 1", RatingKey: 1, SectionID: 2},
+				{Title: "Movie 1", RatingKey: 1, SectionID: 2, MediaType: "movie"},
 			},
 			wantErr: false,
 		},
@@ -708,9 +708,9 @@ func TestTautulliClient_GetHomeStatsAll(t *testing.T) {
 			},
 			want: &HomeStatsResult{
 				TopWatched: []HomeStatsItem{
-					{Title: "Movie 1", RatingKey: 1, SectionID: 2},
-					{Title: "Movie 2", RatingKey: 3, SectionID: 4},
-					{Title: "TV Show 1", RatingKey: 5, SectionID: 6},
+					{Title: "Movie 1", RatingKey: 1, SectionID: 2, MediaType: "movie"},
+					{Title: "Movie 2", RatingKey: 3, SectionID: 4, MediaType: "movie"},
+					{Title: "TV Show 1", RatingKey: 5, SectionID: 6, MediaType: "show"},
 				},
 				TopGenres: []string{"Action", "Comedy"},
 			},

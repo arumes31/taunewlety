@@ -2,6 +2,7 @@ package http
 
 import (
 	"encoding/csv"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -201,12 +202,21 @@ func (h *Handler) SubscribersImport(c *gin.Context) {
 	}
 
 	var imported, skipped int
+	row := 1 // header was row 1; data rows start at 2
 	for {
+		row++
 		record, err := reader.Read()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
 		if err != nil {
+			// A row with the wrong number of columns is a bad row, not a bad
+			// file: skip it so the rest of the import still lands.
+			if errors.Is(err, csv.ErrFieldCount) {
+				log.Printf("Skipping malformed CSV row %d: %v", row, err)
+				skipped++
+				continue
+			}
 			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Failed to read CSV row: " + err.Error()})
 			return
 		}
@@ -220,23 +230,27 @@ func (h *Handler) SubscribersImport(c *gin.Context) {
 			continue
 		}
 
-		// Validate email format
+		// Validate email format. The address itself is never logged.
 		if _, err := mail.ParseAddress(email); err != nil {
-			log.Printf("Skipping invalid email during import: %q", email)
+			log.Printf("Skipping invalid email address on CSV row %d", row)
 			skipped++
 			continue
 		}
 
 		// Check if already exists
 		var count int64
-		h.DB.Model(&models.Subscriber{}).Where("email = ?", email).Count(&count)
+		if err := h.DB.Model(&models.Subscriber{}).Where("email = ?", email).Count(&count).Error; err != nil {
+			log.Printf("Failed to check for an existing subscriber on CSV row %d: %v", row, err)
+			skipped++
+			continue
+		}
 		if count > 0 {
 			skipped++
 			continue
 		}
 
 		if err := h.DB.Create(&models.Subscriber{Email: email, Active: true}).Error; err != nil {
-			log.Printf("Failed to import subscriber %q: %v", email, err)
+			log.Printf("Failed to import subscriber on CSV row %d: %v", row, err)
 			skipped++
 			continue
 		}

@@ -124,16 +124,25 @@ func (s *NewsletterService) MixRecommendations() ([]Candidate, error) {
 	appendLimited(genreMatch, limit)
 	appendLimited(fresh, limit)
 
-	// Add "Surprise Me" — use topWatched from the single GetHomeStatsAll call
+	// Add "Surprise Me" — use topWatched from the single GetHomeStatsAll call.
+	// Start at a random offset and hand the whole rotated list to
+	// appendLimited, so a pick that is already in the selection falls through
+	// to the next candidate instead of producing a duplicate.
 	if len(topWatched) > 0 {
-		randItem := topWatched[rand.Intn(len(topWatched))]
-		// Convert HomeStatsItem to RecentlyAddedItem for the Candidate
-		surpriseItem := clients.RecentlyAddedItem{
-			RatingKey: randItem.RatingKey,
-			Title:     randItem.Title,
-			MediaType: "movie",
+		start := rand.Intn(len(topWatched))
+		surprises := make([]Candidate, 0, len(topWatched))
+		for i := 0; i < len(topWatched); i++ {
+			item := topWatched[(start+i)%len(topWatched)]
+			surprises = append(surprises, Candidate{
+				clients.RecentlyAddedItem{
+					RatingKey: item.RatingKey,
+					Title:     item.Title,
+					MediaType: item.MediaType,
+				},
+				[]string{"Surprise Me!"},
+			})
 		}
-		finalSelection = append(finalSelection, Candidate{surpriseItem, []string{"Surprise Me!"}})
+		appendLimited(surprises, 1)
 	}
 
 	return finalSelection, nil

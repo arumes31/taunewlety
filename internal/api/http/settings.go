@@ -13,9 +13,21 @@ import (
 	"gorm.io/gorm"
 )
 
+// Pagination bounds for the subscriber list. maxPage keeps
+// (page-1)*maxPerPage well inside int32 so the offset cannot overflow on a
+// 32-bit build.
+const (
+	defaultPerPage = 50
+	maxPerPage     = 200
+	maxPage        = 100000
+)
+
+// EditableConfigDTO carries the settings form. Secret fields are optional:
+// the form renders them blank, and an empty submission keeps the stored value
+// (see SettingsPost), so requiring them would reject every save.
 type EditableConfigDTO struct {
 	TautulliURL    string `form:"tautulli_url" binding:"required,url"`
-	TautulliAPIKey string `form:"tautulli_api_key" binding:"required"`
+	TautulliAPIKey string `form:"tautulli_api_key" binding:"omitempty"`
 	PlexURL        string `form:"plex_url" binding:"omitempty,url"`
 	PlexToken      string `form:"plex_token" binding:"omitempty"`
 	OllamaURL      string `form:"ollama_url" binding:"required,url"`
@@ -23,7 +35,7 @@ type EditableConfigDTO struct {
 	SMTPHost       string `form:"smtp_host" binding:"required"`
 	SMTPPort       int    `form:"smtp_port" binding:"required,min=1,max=65535"`
 	SMTPUser       string `form:"smtp_user" binding:"required"`
-	SMTPPass       string `form:"smtp_pass" binding:"required"`
+	SMTPPass       string `form:"smtp_pass" binding:"omitempty"`
 	SMTPSender     string `form:"smtp_sender" binding:"required,email"`
 	SMTPEncryption string `form:"smtp_encryption" binding:"omitempty,oneof=starttls tls none"`
 	AppBaseURL     string `form:"app_base_url" binding:"required,url"`
@@ -35,6 +47,16 @@ type EditableConfigDTO struct {
 	Language       string `form:"language" binding:"required"`
 }
 
+// renderDashboardError renders the standalone error page. index.html assumes
+// a fully populated context (pagination counters, CSRF token, blacklist), so
+// re-rendering it on a database failure would fail inside the template.
+func renderDashboardError(c *gin.Context, message string) {
+	c.HTML(http.StatusInternalServerError, "error.html", gin.H{
+		"title":   "Something went wrong",
+		"message": message,
+	})
+}
+
 func (h *Handler) DashboardGet(c *gin.Context) {
 	config, err := database.GetConfig()
 	if err != nil || config == nil {
@@ -42,17 +64,21 @@ func (h *Handler) DashboardGet(c *gin.Context) {
 		config = &models.Config{}
 	}
 
-	// Pagination parameters with defaults
-	pageStr := c.DefaultQuery("page", "1")
-	perPageStr := c.DefaultQuery("per_page", "50")
-
-	page, err := strconv.Atoi(pageStr)
+	// Pagination parameters with defaults, clamped so a hostile page or
+	// per_page value cannot overflow the offset or ask for an unbounded scan.
+	page, err := strconv.Atoi(c.DefaultQuery("page", "1"))
 	if err != nil || page < 1 {
 		page = 1
 	}
-	perPage, err := strconv.Atoi(perPageStr)
+	if page > maxPage {
+		page = maxPage
+	}
+	perPage, err := strconv.Atoi(c.DefaultQuery("per_page", strconv.Itoa(defaultPerPage)))
 	if err != nil || perPage < 1 {
-		perPage = 50
+		perPage = defaultPerPage
+	}
+	if perPage > maxPerPage {
+		perPage = maxPerPage
 	}
 
 	offset := (page - 1) * perPage
@@ -61,10 +87,7 @@ func (h *Handler) DashboardGet(c *gin.Context) {
 	var totalSubscribers int64
 	if err := h.DB.Model(&models.Subscriber{}).Count(&totalSubscribers).Error; err != nil {
 		log.Printf("Failed to count subscribers: %v", err)
-		c.HTML(http.StatusInternalServerError, "index.html", gin.H{
-			"config":      config,
-			"subscribers": []models.Subscriber{},
-		})
+		renderDashboardError(c, "Could not load subscribers.")
 		return
 	}
 
@@ -72,10 +95,7 @@ func (h *Handler) DashboardGet(c *gin.Context) {
 	var subscribers []models.Subscriber
 	if err := h.DB.Offset(offset).Limit(perPage).Order("id ASC").Find(&subscribers).Error; err != nil {
 		log.Printf("Failed to fetch subscribers: %v", err)
-		c.HTML(http.StatusInternalServerError, "index.html", gin.H{
-			"config":      config,
-			"subscribers": []models.Subscriber{},
-		})
+		renderDashboardError(c, "Could not load subscribers.")
 		return
 	}
 
@@ -109,15 +129,15 @@ func (h *Handler) DashboardGet(c *gin.Context) {
 	csrfToken, _ := c.Get("csrf_token")
 
 	c.HTML(http.StatusOK, "index.html", gin.H{
-		"config":           config,
-		"subscribers":      subscribers,
-		"totalTokens":      totalTokens,
-		"csrf_token":       csrfToken,
-		"blacklist":        blacklist,
-		"page":             page,
-		"per_page":         perPage,
+		"config":            config,
+		"subscribers":       subscribers,
+		"totalTokens":       totalTokens,
+		"csrf_token":        csrfToken,
+		"blacklist":         blacklist,
+		"page":              page,
+		"per_page":          perPage,
 		"total_subscribers": totalSubscribers,
-		"total_pages":      totalPages,
+		"total_pages":       totalPages,
 	})
 }
 
@@ -129,39 +149,50 @@ func (h *Handler) SettingsPost(c *gin.Context) {
 	}
 
 	config, err := database.GetConfig()
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			config = &models.Config{
-				RecCount:       10,
-				NewsletterTime: "09:00",
-			}
-		} else {
-			log.Printf("Error loading config: %v", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load existing config: " + err.Error()})
-			return
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		log.Printf("Error loading config: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load existing config: " + err.Error()})
+		return
+	}
+	// Covers both "no row yet" and a nil config returned without an error.
+	if config == nil {
+		config = &models.Config{
+			RecCount:       10,
+			NewsletterTime: "09:00",
 		}
 	}
 
 	// Copy only allowed fields from the DTO to loaded config
 	config.TautulliURL = dto.TautulliURL
-	config.TautulliAPIKey = dto.TautulliAPIKey
 	config.PlexURL = dto.PlexURL
-	config.PlexToken = dto.PlexToken
 	config.OllamaURL = dto.OllamaURL
 	config.OllamaModel = dto.OllamaModel
 	config.SMTPHost = dto.SMTPHost
 	config.SMTPPort = dto.SMTPPort
 	config.SMTPUser = dto.SMTPUser
-	config.SMTPPass = dto.SMTPPass
 	config.SMTPSender = dto.SMTPSender
 	config.SMTPEncryption = dto.SMTPEncryption
 	config.AppBaseURL = dto.AppBaseURL
 	config.DiscordWebhook = dto.DiscordWebhook
-	config.TelegramBotTok = dto.TelegramBotTok
 	config.TelegramChatID = dto.TelegramChatID
 	config.NewsletterTime = dto.NewsletterTime
 	config.RecCount = dto.RecCount
 	config.Language = dto.Language
+
+	// Secrets are never rendered back into the form, so a blank submission
+	// means "unchanged" rather than "clear it".
+	if dto.TautulliAPIKey != "" {
+		config.TautulliAPIKey = dto.TautulliAPIKey
+	}
+	if dto.PlexToken != "" {
+		config.PlexToken = dto.PlexToken
+	}
+	if dto.SMTPPass != "" {
+		config.SMTPPass = dto.SMTPPass
+	}
+	if dto.TelegramBotTok != "" {
+		config.TelegramBotTok = dto.TelegramBotTok
+	}
 
 	if err := database.SaveConfig(config); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save settings: " + err.Error()})

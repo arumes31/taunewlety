@@ -241,10 +241,10 @@
             <img src="/static/logo.svg" alt="TauNewlety Logo" style="width: 180px; height: auto;">
         </div>
         <div class="sidebar-nav">
-            <a href="#" class="active" onclick="showTab('settings', event)">Settings</a>
-            <a href="#" onclick="showTab('subscribers', event)">Subscribers</a>
-            <a href="#" onclick="showTab('stats', event)">Stats & Logs</a>
-            <a href="#" onclick="showTab('blacklist', event)">Blacklist</a>
+            <a href="#" class="active" data-tab="settings">Settings</a>
+            <a href="#" data-tab="subscribers">Subscribers</a>
+            <a href="#" data-tab="stats">Stats &amp; Logs</a>
+            <a href="#" data-tab="blacklist">Blacklist</a>
             <form action="/logout" method="POST" style="margin: 0; padding: 0;">
                 <input type="hidden" name="csrf_token" value="{{.csrf_token}}">
                 <button type="submit" class="logout-btn"
@@ -268,7 +268,8 @@
                         </div>
                         <div class="form-group">
                             <label>Tautulli API Key</label>
-                            <input type="password" name="tautulli_api_key" value="{{.config.TautulliAPIKey}}">
+                            <input type="password" name="tautulli_api_key" value="" autocomplete="new-password">
+                            <small style="color: #888;">Leave blank to keep the current value.</small>
                         </div>
                     </div>
                 </div>
@@ -297,8 +298,9 @@
                                 value="{{.config.SMTPPort}}"></div>
                         <div class="form-group"><label>User</label><input type="text" name="smtp_user"
                                 value="{{.config.SMTPUser}}"></div>
-                        <div class="form-group"><label>Pass</label><input type="password" name="smtp_pass"
-                                value="{{.config.SMTPPass}}"></div>
+                        <div class="form-group"><label>Pass</label><input type="password" name="smtp_pass" value=""
+                                autocomplete="new-password"><small style="color: #888;">Leave blank to keep the current
+                                value.</small></div>
                         <div class="form-group"><label>Sender Email</label><input type="email" name="smtp_sender"
                                 value="{{.config.SMTPSender}}"></div>
                     </div>
@@ -327,7 +329,8 @@
                         </div>
                         <div class="form-group">
                             <label>Plex Token</label>
-                            <input type="password" name="plex_token" value="{{.config.PlexToken}}">
+                            <input type="password" name="plex_token" value="" autocomplete="new-password">
+                            <small style="color: #888;">Leave blank to keep the current value.</small>
                         </div>
                     </div>
                 </div>
@@ -341,7 +344,8 @@
                         </div>
                         <div class="form-group">
                             <label>Telegram Bot Token</label>
-                            <input type="password" name="telegram_bot_token" value="{{.config.TelegramBotTok}}">
+                            <input type="password" name="telegram_bot_token" value="" autocomplete="new-password">
+                            <small style="color: #888;">Leave blank to keep the current value.</small>
                         </div>
                         <div class="form-group">
                             <label>Telegram Chat ID</label>
@@ -399,7 +403,7 @@
 
             <div class="actions">
                 <a href="/preview" class="btn btn-secondary" target="_blank">Preview Newsletter</a>
-                <button onclick="sendNow()" class="btn btn-success">Send Manual Newsletter</button>
+                <button type="button" id="send-now" class="btn btn-success">Send Manual Newsletter</button>
             </div>
         </div>
 
@@ -547,53 +551,7 @@
         </div>
     </div>
 
-    <script>
-        function showTab(tabId, event) {
-            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-            document.querySelectorAll('.sidebar-nav a').forEach(a => a.classList.remove('active'));
-            document.getElementById(tabId).classList.add('active');
-            event.target.classList.add('active');
-        }
-
-        async function sendNow() {
-            if (!confirm("Send newsletter now?")) return;
-            // Get CSRF token from the settings form hidden input
-            const csrfToken = document.querySelector('input[name="csrf_token"]').value;
-            const resp = await fetch('/send', {
-                method: 'POST',
-                headers: { 'X-CSRF-Token': csrfToken }
-            });
-            if (resp.ok) alert("Newsletter sent successfully!");
-            else alert("Error sending newsletter.");
-        }
-
-        // Real log fetching from /api/logs
-        function fetchLogs() {
-            fetch('/api/logs')
-                .then(resp => resp.json())
-                .then(data => {
-                    const logDiv = document.getElementById('live-log');
-                    if (data.logs && data.logs.length > 0) {
-                        const lines = data.logs.map(entry => {
-                            const time = new Date(entry.time).toLocaleTimeString();
-                            return '[' + entry.level.toUpperCase() + '] ' + time + ' - ' + entry.message;
-                        }).join('\n');
-                        logDiv.textContent = lines;
-                        logDiv.scrollTop = logDiv.scrollHeight;
-                    } else {
-                        logDiv.textContent = 'No log entries available. Logs are available in the server console.';
-                    }
-                })
-                .catch(() => {
-                    const logDiv = document.getElementById('live-log');
-                    logDiv.textContent = 'Logs are available in the server console.';
-                });
-        }
-
-        // Fetch logs on load and refresh every 5 seconds
-        fetchLogs();
-        setInterval(fetchLogs, 5000);
-    </script>
+    <script src="/static/js/dashboard.js"></script>
 </body>
 
 </html>

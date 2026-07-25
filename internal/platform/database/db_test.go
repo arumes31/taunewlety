@@ -422,3 +422,29 @@ func TestRunMigrations(t *testing.T) {
 		}
 	})
 }
+
+func TestEscapeDSNValue(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{name: "Plain value", input: "taunewlety", want: `'taunewlety'`},
+		{name: "Empty value", input: "", want: `''`},
+		{name: "Value with spaces", input: "my db name", want: `'my db name'`},
+		{name: "Single quote is backslash escaped", input: "pa'ss", want: `'pa\'ss'`},
+		{name: "Backslash is doubled", input: `pa\ss`, want: `'pa\\ss'`},
+		{name: "Backslash before quote", input: `pa\'ss`, want: `'pa\\\'ss'`},
+		{name: "Newline preserved verbatim", input: "pa\nss", want: "'pa\nss'"},
+		{name: "Carriage return preserved verbatim", input: "pa\rss", want: "'pa\rss'"},
+		{name: "Quote injection attempt", input: "x' host='evil", want: `'x\' host=\'evil'`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := escapeDSNValue(tt.input); got != tt.want {
+				t.Errorf("escapeDSNValue(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}

@@ -2,11 +2,13 @@ package clients
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 )
@@ -63,6 +65,22 @@ type HomeStatsItem struct {
 	Total     int    `json:"total"`
 	RatingKey int    `json:"rating_key"`
 	SectionID int    `json:"section_id"`
+	// MediaType is derived from the stat the row came from: "movie" for
+	// top_movies, "show" for top_tv.
+	MediaType string `json:"media_type"`
+}
+
+// mediaTypeForStat maps a get_home_stats stat_id to the media type its rows
+// describe. It returns "" for stats that are not per-title.
+func mediaTypeForStat(statID string) string {
+	switch statID {
+	case "top_movies":
+		return "movie"
+	case "top_tv":
+		return "show"
+	default:
+		return ""
+	}
 }
 
 // homeStatsData is the inner data structure for get_home_stats.
@@ -99,12 +117,26 @@ type WatchInfo struct {
 
 // --- Helper for decoding Tautulli responses ---
 
+// redactErr strips the API key from an error message. Transport errors from
+// net/http embed the full request URL, which carries the key as a query
+// parameter, so any error that leaves this client must pass through here.
+func (c *TautulliClient) redactErr(err error) error {
+	if err == nil || c.APIKey == "" {
+		return err
+	}
+	msg := strings.ReplaceAll(err.Error(), c.APIKey, "[REDACTED]")
+	if msg == err.Error() {
+		return err
+	}
+	return errors.New(msg)
+}
+
 func (c *TautulliClient) doRequest(params url.Values) (*TautulliResponse, error) {
 	params.Set("apikey", c.APIKey)
 	fullURL := c.BaseURL + "/api/v2?" + params.Encode()
 	resp, err := c.HTTP.Get(fullURL)
 	if err != nil {
-		return nil, err
+		return nil, c.redactErr(err)
 	}
 	defer resp.Body.Close()
 
@@ -201,7 +233,7 @@ func (c *TautulliClient) GetWatchHistoryBatch(ratingKeys []string) (map[string]W
 			errMu.Lock()
 			errCount++
 			errMu.Unlock()
-			log.Printf("Warning: failed to get watch history for rating key %v: %v", res.key, res.err)
+			log.Printf("Warning: failed to get watch history for rating key %v: %v", res.key, c.redactErr(res.err))
 		}
 	}
 
@@ -285,6 +317,7 @@ func (c *TautulliClient) GetTopWatched(count int) ([]HomeStatsItem, error) {
 					Total:     row.Total,
 					RatingKey: row.RatingKey,
 					SectionID: row.SectionID,
+					MediaType: mediaTypeForStat(stat.StatID),
 				})
 			}
 		}
@@ -358,6 +391,7 @@ func (c *TautulliClient) GetHomeStatsAll(count int) (*HomeStatsResult, error) {
 					Total:     row.Total,
 					RatingKey: row.RatingKey,
 					SectionID: row.SectionID,
+					MediaType: mediaTypeForStat(stat.StatID),
 				})
 			}
 		}

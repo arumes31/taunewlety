@@ -26,6 +26,34 @@ var loginLimiter = &loginRateLimiter{
 	window:      15 * time.Minute,
 }
 
+func init() {
+	loginLimiter.startSweeper(loginLimiter.window)
+}
+
+// sweep drops attempt records whose window has already elapsed. Without it
+// the map grows without bound, since check/reset only remove the entry for
+// an IP that comes back.
+func (l *loginRateLimiter) sweep() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	for ip, attempt := range l.attempts {
+		if time.Since(attempt.lastTime) > l.window {
+			delete(l.attempts, ip)
+		}
+	}
+}
+
+// startSweeper runs sweep on a ticker for the lifetime of the process.
+func (l *loginRateLimiter) startSweeper(interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	go func() {
+		for range ticker.C {
+			l.sweep()
+		}
+	}()
+}
+
 func (l *loginRateLimiter) check(ip string) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()

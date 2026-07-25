@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	api_http "taunewlety/internal/api/http"
 	"taunewlety/internal/domain/models"
@@ -108,36 +109,67 @@ func (a *App) Run(ctx context.Context) error {
 	return nil
 }
 
+// defaultCronSchedule runs the newsletter daily at 09:00.
+const defaultCronSchedule = "0 9 * * *"
+
+// buildSchedule is an indirection so tests can feed setupScheduler a
+// deliberately invalid expression; production always uses buildCronSchedule.
+var buildSchedule = buildCronSchedule
+
 // buildCronSchedule converts a "HH:MM" time string into a cron expression
-// that runs daily at the specified time. Returns a default of "0 9 * * *"
-// if the input is invalid or empty.
+// that runs daily at the specified time. Returns defaultCronSchedule if the
+// input is empty or is not a valid 24-hour time.
 func buildCronSchedule(newsletterTime string) string {
 	if newsletterTime == "" {
-		return "0 9 * * *"
+		return defaultCronSchedule
 	}
 
 	parts := strings.SplitN(newsletterTime, ":", 2)
 	if len(parts) != 2 {
-		return "0 9 * * *"
+		return defaultCronSchedule
 	}
 
-	hour := parts[0]
-	minute := parts[1]
+	hourStr, minuteStr := parts[0], parts[1]
 
-	// Basic validation: hour 00-23, minute 00-59
-	if len(hour) < 1 || len(hour) > 2 || len(minute) != 2 {
-		return "0 9 * * *"
+	// Digits only: cron would happily accept "+5" or " 5" from Atoi but then
+	// fail to parse the expression we build from the original strings.
+	if !isDigits(hourStr) || !isDigits(minuteStr) {
+		return defaultCronSchedule
+	}
+	if len(hourStr) < 1 || len(hourStr) > 2 || len(minuteStr) != 2 {
+		return defaultCronSchedule
 	}
 
-	return fmt.Sprintf("%s %s * * *", minute, hour)
+	hour, err := strconv.Atoi(hourStr)
+	if err != nil || hour < 0 || hour > 23 {
+		return defaultCronSchedule
+	}
+	minute, err := strconv.Atoi(minuteStr)
+	if err != nil || minute < 0 || minute > 59 {
+		return defaultCronSchedule
+	}
+
+	return fmt.Sprintf("%s %s * * *", minuteStr, hourStr)
+}
+
+func isDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func (a *App) setupScheduler() {
 	// Load the newsletter time from the config; fall back to "09:00" if unavailable.
-	schedule := "0 9 * * *"
+	schedule := defaultCronSchedule
 	config, err := database.GetConfig()
 	if err == nil && config != nil && config.NewsletterTime != "" {
-		schedule = buildCronSchedule(config.NewsletterTime)
+		schedule = buildSchedule(config.NewsletterTime)
 	}
 
 	_, err = a.cron.AddFunc(schedule, func() {

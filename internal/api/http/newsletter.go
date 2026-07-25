@@ -2,8 +2,10 @@ package http
 
 import (
 	"errors"
+	"log"
 	"net/http"
 	"os"
+	"sync"
 	"taunewlety/internal/domain/models"
 	"taunewlety/internal/service/newsletter"
 
@@ -46,19 +48,56 @@ func (h *Handler) NewsletterSendManual(c *gin.Context) {
 
 	// Send to all active subscribers
 	var subscribers []models.Subscriber
-	h.DB.Where("active = ?", true).Find(&subscribers)
-	for _, sub := range subscribers {
-		go func(email string) {
-			_ = svc.SendEmail(email, subject, body)
-		}(sub.Email)
+	if err := h.DB.Where("active = ?", true).Find(&subscribers).Error; err != nil {
+		log.Printf("Manual send: failed to load subscribers: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load subscribers"})
+		return
 	}
 
+	recipients := make([]string, 0, len(subscribers)+1)
+	for _, sub := range subscribers {
+		recipients = append(recipients, sub.Email)
+	}
 	// Also send to admin notification email as a backup
 	if notifyEmail := os.Getenv("NOTIFY_EMAIL"); notifyEmail != "" {
-		go func() {
-			_ = svc.SendEmail(notifyEmail, subject, body)
-		}()
+		recipients = append(recipients, notifyEmail)
 	}
 
-	c.JSON(http.StatusOK, gin.H{"status": "Sent"})
+	go sendBulkEmail(svc, recipients, subject, body)
+
+	c.JSON(http.StatusOK, gin.H{"status": "Sent", "recipients": len(recipients)})
+}
+
+// maxConcurrentSends bounds how many SMTP conversations run at once so a
+// large subscriber list cannot exhaust sockets or trip the provider's
+// connection limits.
+const maxConcurrentSends = 5
+
+// sendBulkEmail delivers the newsletter to every recipient using a bounded
+// pool of workers. Failures are counted rather than logged individually so
+// subscriber addresses never reach the log.
+func sendBulkEmail(svc *newsletter.NewsletterService, recipients []string, subject, body string) {
+	sem := make(chan struct{}, maxConcurrentSends)
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	failed := 0
+
+	for _, addr := range recipients {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(a string) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			if err := svc.SendEmail(a, subject, body); err != nil {
+				mu.Lock()
+				failed++
+				mu.Unlock()
+			}
+		}(addr)
+	}
+	wg.Wait()
+
+	if failed > 0 {
+		log.Printf("Manual send: %d of %d messages failed to deliver", failed, len(recipients))
+	}
 }

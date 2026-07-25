@@ -12,17 +12,18 @@ import (
 // CSRFProtection is a middleware that generates and validates CSRF tokens.
 // On GET/HEAD/OPTIONS requests it generates a new token, stores it in the
 // session, and makes it available to templates via c.Set("csrf_token", ...).
-// On POST/PUT/DELETE requests it validates the submitted token (form field
-// "csrf_token" or header "X-CSRF-Token") against the session value.
+// On POST/PUT/PATCH/DELETE requests it validates the submitted token (form
+// field "csrf_token" or header "X-CSRF-Token") against the session value.
 func CSRFProtection() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		session := sessions.Default(c)
 		method := c.Request.Method
 
-		// Ensure a CSRF token exists for the session
-		csrfSession := session.Get("csrf_token")
-		var token string
-		if csrfSession == nil {
+		// Ensure a CSRF token exists for the session. A session value that is
+		// missing, of another type, or empty is treated as "no token yet" so a
+		// malformed cookie cannot panic the middleware.
+		token, ok := session.Get("csrf_token").(string)
+		if !ok || token == "" {
 			newToken, err := generateCSRFToken()
 			if err != nil {
 				c.String(http.StatusInternalServerError, "Failed to generate CSRF token")
@@ -36,13 +37,11 @@ func CSRFProtection() gin.HandlerFunc {
 				return
 			}
 			token = newToken
-		} else {
-			token = csrfSession.(string)
 		}
 		c.Set("csrf_token", token)
 
 		switch method {
-		case http.MethodPost, http.MethodPut, http.MethodDelete:
+		case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
 			// Read token from form field or header
 			csrfInput := c.PostForm("csrf_token")
 			if csrfInput == "" {
