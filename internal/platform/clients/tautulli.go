@@ -138,7 +138,7 @@ func (c *TautulliClient) doRequest(params url.Values) (*TautulliResponse, error)
 	if err != nil {
 		return nil, c.redactErr(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		bodyBytes, _ := io.ReadAll(resp.Body)

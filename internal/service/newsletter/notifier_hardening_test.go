@@ -138,7 +138,7 @@ func TestSendNotifications_NonSuccessStatusLogged(t *testing.T) {
 			discordFailed := strings.Contains(output, "Failed to send Discord notification")
 			telegramFailed := strings.Contains(output, "Failed to send Telegram notification")
 
-			if tt.want && !(discordFailed && telegramFailed) {
+			if tt.want && (!discordFailed || !telegramFailed) {
 				t.Errorf("status %d should be reported as a failure, log was: %s", tt.status, output)
 			}
 			if !tt.want && (discordFailed || telegramFailed) {

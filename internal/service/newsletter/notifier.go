@@ -67,13 +67,13 @@ var smtpSendMailTLS = func(addr string, auth smtp.Auth, from string, to []string
 	if err != nil {
 		return fmt.Errorf("tls dial failed: %w", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	c, err := smtp.NewClient(conn, host)
 	if err != nil {
 		return fmt.Errorf("smtp client creation failed: %w", err)
 	}
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 
 	if err = c.Auth(auth); err != nil {
 		return fmt.Errorf("smtp auth failed: %w", err)
@@ -106,7 +106,7 @@ var smtpSendMailNoAuth = func(addr string, from string, to []string, msg []byte)
 	if err != nil {
 		return fmt.Errorf("smtp dial failed: %w", err)
 	}
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 
 	if err = c.Mail(from); err != nil {
 		return fmt.Errorf("smtp mail from failed: %w", err)

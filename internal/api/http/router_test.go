@@ -49,17 +49,17 @@ func TestSetupRouter(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Set env vars
 			if tt.sessionSecret != "" {
-				os.Setenv("SESSION_SECRET", tt.sessionSecret)
+				_ = os.Setenv("SESSION_SECRET", tt.sessionSecret)
 			} else {
-				os.Unsetenv("SESSION_SECRET")
+				_ = os.Unsetenv("SESSION_SECRET")
 			}
-			os.Setenv("ENV", tt.env)
-			os.Setenv("COOKIE_SECURE", tt.cookieSecure)
+			_ = os.Setenv("ENV", tt.env)
+			_ = os.Setenv("COOKIE_SECURE", tt.cookieSecure)
 
 			defer func() {
-				os.Unsetenv("SESSION_SECRET")
-				os.Unsetenv("ENV")
-				os.Unsetenv("COOKIE_SECURE")
+				_ = os.Unsetenv("SESSION_SECRET")
+				_ = os.Unsetenv("ENV")
+				_ = os.Unsetenv("COOKIE_SECURE")
 			}()
 
 			var db *gorm.DB // nil is fine for router setup tests
@@ -139,9 +139,10 @@ func TestResolveWebDir(t *testing.T) {
 			wd := tt.mockWd
 			if tt.setupFs != nil {
 				res := tt.setupFs(t.TempDir())
-				if tt.name == "found in current dir" {
+				switch tt.name {
+				case "found in current dir":
 					tt.expected = filepath.Join(res, "web")
-				} else if tt.name == "found in parent dir" {
+				case "found in parent dir":
 					tt.expected = filepath.Join(filepath.Dir(res), "web")
 				}
 				wd = res

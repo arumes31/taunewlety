@@ -1,8 +1,9 @@
 package newsletter
 
 import (
+	"crypto/rand"
 	"fmt"
-	"math/rand"
+	"math/big"
 	"strings"
 	"taunewlety/internal/domain/models"
 	"taunewlety/internal/platform/clients"
@@ -136,7 +137,11 @@ func (s *NewsletterService) MixRecommendations() ([]Candidate, error) {
 	// appendLimited, so a pick that is already in the selection falls through
 	// to the next candidate instead of producing a duplicate.
 	if len(topWatched) > 0 {
-		start := rand.Intn(len(topWatched))
+		var start int
+		n, err := rand.Int(rand.Reader, big.NewInt(int64(len(topWatched))))
+		if err == nil {
+			start = int(n.Int64())
+		}
 		surprises := make([]Candidate, 0, len(topWatched))
 		for i := 0; i < len(topWatched); i++ {
 			item := topWatched[(start+i)%len(topWatched)]

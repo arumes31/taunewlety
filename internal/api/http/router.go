@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strconv"
 	"taunewlety/internal/platform/sanitize"
 	"time"
 
@@ -124,13 +123,4 @@ func SetupRouter(db *gorm.DB, logger *zap.Logger) (*gin.Engine, error) {
 	RegisterHandlers(r, db)
 
 	return r, nil
-}
-
-// Helper function used in tests to parse page/per_page from query strings.
-func parseIntDefault(s string, defaultVal int) int {
-	v, err := strconv.Atoi(s)
-	if err != nil || v < 1 {
-		return defaultVal
-	}
-	return v
 }

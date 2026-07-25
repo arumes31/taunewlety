@@ -19,8 +19,8 @@ import (
 // TestLogsRequireAuth verifies that the in-memory log buffer is not readable
 // without a dashboard session.
 func TestLogsRequireAuth(t *testing.T) {
-	os.Setenv("DB_PATH", ":memory:")
-	defer os.Unsetenv("DB_PATH")
+	_ = os.Setenv("DB_PATH", ":memory:")
+	defer func() { _ = os.Unsetenv("DB_PATH") }()
 	t.Setenv("SESSION_SECRET", "logs-test-secret")
 
 	db, err := database.InitDB()

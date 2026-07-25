@@ -19,8 +19,8 @@ import (
 )
 
 func TestSettingsHandlers_DashboardGet(t *testing.T) {
-	os.Setenv("DB_PATH", ":memory:")
-	defer os.Unsetenv("DB_PATH")
+	_ = os.Setenv("DB_PATH", ":memory:")
+	defer func() { _ = os.Unsetenv("DB_PATH") }()
 
 	gin.SetMode(gin.TestMode)
 
@@ -86,8 +86,8 @@ func TestSettingsHandlers_DashboardGet(t *testing.T) {
 }
 
 func TestSettingsHandlers_SettingsPost(t *testing.T) {
-	os.Setenv("DB_PATH", ":memory:")
-	defer os.Unsetenv("DB_PATH")
+	_ = os.Setenv("DB_PATH", ":memory:")
+	defer func() { _ = os.Unsetenv("DB_PATH") }()
 
 	gin.SetMode(gin.TestMode)
 

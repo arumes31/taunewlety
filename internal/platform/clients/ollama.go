@@ -63,7 +63,7 @@ func (c *OllamaClient) Generate(ctx context.Context, prompt string) (string, int
 	if err != nil {
 		return "", 0, 0, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		bodyBytes, _ := io.ReadAll(resp.Body)

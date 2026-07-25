@@ -72,8 +72,8 @@ func postSettings(t *testing.T, h *Handler, form url.Values) *httptest.ResponseR
 // secret inputs: an empty submission must keep the stored value rather than
 // wiping it, and a non-empty one must replace it.
 func TestSettingsPost_PreservesSecretsOnBlank(t *testing.T) {
-	os.Setenv("DB_PATH", ":memory:")
-	defer os.Unsetenv("DB_PATH")
+	_ = os.Setenv("DB_PATH", ":memory:")
+	defer func() { _ = os.Unsetenv("DB_PATH") }()
 	gin.SetMode(gin.TestMode)
 
 	db, err := database.InitDB()
@@ -157,8 +157,8 @@ func TestSettingsPost_PreservesSecretsOnBlank(t *testing.T) {
 // TestDashboardGet_SecretsNotRendered verifies the dashboard never echoes a
 // stored secret back into the HTML.
 func TestDashboardGet_SecretsNotRendered(t *testing.T) {
-	os.Setenv("DB_PATH", ":memory:")
-	defer os.Unsetenv("DB_PATH")
+	_ = os.Setenv("DB_PATH", ":memory:")
+	defer func() { _ = os.Unsetenv("DB_PATH") }()
 	t.Setenv("SESSION_SECRET", "dashboard-secret-test")
 	gin.SetMode(gin.TestMode)
 
@@ -204,8 +204,8 @@ func TestDashboardGet_SecretsNotRendered(t *testing.T) {
 // TestDashboardGet_PaginationClamped checks that hostile pagination values are
 // clamped rather than overflowing the offset or triggering an unbounded scan.
 func TestDashboardGet_PaginationClamped(t *testing.T) {
-	os.Setenv("DB_PATH", ":memory:")
-	defer os.Unsetenv("DB_PATH")
+	_ = os.Setenv("DB_PATH", ":memory:")
+	defer func() { _ = os.Unsetenv("DB_PATH") }()
 	t.Setenv("SESSION_SECRET", "pagination-test")
 	gin.SetMode(gin.TestMode)
 
@@ -245,8 +245,8 @@ func TestDashboardGet_PaginationClamped(t *testing.T) {
 // TestSubscribersImport_MalformedRows verifies a row with the wrong column
 // count is skipped instead of aborting the whole import.
 func TestSubscribersImport_MalformedRows(t *testing.T) {
-	os.Setenv("DB_PATH", ":memory:")
-	defer os.Unsetenv("DB_PATH")
+	_ = os.Setenv("DB_PATH", ":memory:")
+	defer func() { _ = os.Unsetenv("DB_PATH") }()
 	gin.SetMode(gin.TestMode)
 
 	db, err := database.InitDB()

@@ -42,7 +42,7 @@ func startMockSMTPServer(t *testing.T) *mockSMTPServer {
 				return
 			}
 			go func(c net.Conn) {
-				defer c.Close()
+				defer func() { _ = c.Close() }()
 				reader := bufio.NewReader(c)
 				writer := bufio.NewWriter(c)
 
@@ -112,18 +112,22 @@ func TestNewApp(t *testing.T) {
 
 func TestApp_Lifecycle(t *testing.T) {
 	// Set common environment variables
-	os.Setenv("SESSION_SECRET", "app-test-secret-9876")
-	os.Setenv("APP_USER", "admin")
-	os.Setenv("APP_PASS", "password")
-	defer os.Unsetenv("SESSION_SECRET")
-	defer os.Unsetenv("APP_USER")
-	defer os.Unsetenv("APP_PASS")
+	_ = os.Setenv("SESSION_SECRET", "app-test-secret-9876")
+	_ = os.Setenv("APP_USER", "admin")
+	_ = os.Setenv("APP_PASS", "password")
+	defer func() {
+		_ = os.Unsetenv("SESSION_SECRET")
+		_ = os.Unsetenv("APP_USER")
+		_ = os.Unsetenv("APP_PASS")
+	}()
 
 	t.Run("Successful Run and Shutdown", func(t *testing.T) {
-		os.Setenv("PORT", "9901")
-		os.Setenv("DB_PATH", ":memory:")
-		defer os.Unsetenv("PORT")
-		defer os.Unsetenv("DB_PATH")
+		_ = os.Setenv("PORT", "9901")
+		_ = os.Setenv("DB_PATH", ":memory:")
+		defer func() {
+			_ = os.Unsetenv("PORT")
+			_ = os.Unsetenv("DB_PATH")
+		}()
 
 		app := NewApp()
 		ctx, cancel := context.WithCancel(context.Background())
@@ -137,7 +141,7 @@ func TestApp_Lifecycle(t *testing.T) {
 		for i := 0; i < 20; i++ {
 			conn, err := net.Dial("tcp", "127.0.0.1:9901")
 			if err == nil {
-				conn.Close()
+				_ = conn.Close()
 				break
 			}
 			time.Sleep(50 * time.Millisecond)
@@ -165,8 +169,8 @@ func TestApp_Lifecycle(t *testing.T) {
 
 		app := NewApp()
 		// Use an invalid port to force ListenAndServe to fail immediately
-		os.Setenv("PORT", "-1")
-		defer os.Unsetenv("PORT")
+		_ = os.Setenv("PORT", "-1")
+		defer func() { _ = os.Unsetenv("PORT") }()
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -205,7 +209,7 @@ func TestApp_Lifecycle(t *testing.T) {
 		if dialErr != nil {
 			t.Fatalf("failed to dial: %v", dialErr)
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		err = app.Shutdown(ctx)
 		if err == nil {
@@ -216,10 +220,10 @@ func TestApp_Lifecycle(t *testing.T) {
 }
 
 func TestApp_RunMissingCredentials(t *testing.T) {
-	os.Setenv("SESSION_SECRET", "secret")
-	os.Unsetenv("APP_USER")
-	os.Unsetenv("APP_PASS")
-	defer os.Unsetenv("SESSION_SECRET")
+	_ = os.Setenv("SESSION_SECRET", "secret")
+	_ = os.Unsetenv("APP_USER")
+	_ = os.Unsetenv("APP_PASS")
+	defer func() { _ = os.Unsetenv("SESSION_SECRET") }()
 
 	app := NewApp()
 	err := app.Run(context.Background())
@@ -229,15 +233,17 @@ func TestApp_RunMissingCredentials(t *testing.T) {
 }
 func TestApp_RunRobustness(t *testing.T) {
 	t.Run("Default Environment Variables", func(t *testing.T) {
-		os.Unsetenv("PORT")
-		os.Unsetenv("DB_PATH")
-		os.Setenv("SESSION_SECRET", "secret")
-		os.Setenv("APP_USER", "admin")
-		os.Setenv("APP_PASS", "password")
-		defer os.Unsetenv("SESSION_SECRET")
-		defer os.Unsetenv("APP_USER")
-		defer os.Unsetenv("APP_PASS")
-		defer os.Remove("taunewlety.db")
+		_ = os.Unsetenv("PORT")
+		_ = os.Unsetenv("DB_PATH")
+		_ = os.Setenv("SESSION_SECRET", "secret")
+		_ = os.Setenv("APP_USER", "admin")
+		_ = os.Setenv("APP_PASS", "password")
+		defer func() {
+			_ = os.Unsetenv("SESSION_SECRET")
+			_ = os.Unsetenv("APP_USER")
+			_ = os.Unsetenv("APP_PASS")
+		}()
+		defer func() { _ = os.Remove("taunewlety.db") }()
 
 		// Mock fatal to avoid crash if 8080 is in use
 		oldFatal := loggerFatal
@@ -252,11 +258,11 @@ func TestApp_RunRobustness(t *testing.T) {
 }
 
 func TestApp_Scheduler(t *testing.T) {
-	os.Setenv("DB_PATH", ":memory:")
-	defer os.Unsetenv("DB_PATH")
+	_ = os.Setenv("DB_PATH", ":memory:")
+	defer func() { _ = os.Unsetenv("DB_PATH") }()
 
 	t.Run("Cron Setup Error", func(t *testing.T) {
-		database.InitDB()
+		_, _ = database.InitDB()
 		config, _ := database.GetConfig()
 		if config != nil {
 			config.NewsletterTime = "09:00"
@@ -287,7 +293,7 @@ func TestApp_Scheduler(t *testing.T) {
 			{
 				name: "Missing Config",
 				setup: func(t *testing.T) (*httptest.Server, *mockSMTPServer) {
-					database.InitDB()
+					_, _ = database.InitDB()
 
 					database.GetDB().Exec("DELETE FROM configs")
 					return nil, nil
@@ -296,7 +302,7 @@ func TestApp_Scheduler(t *testing.T) {
 			{
 				name: "Generation Fails",
 				setup: func(t *testing.T) (*httptest.Server, *mockSMTPServer) {
-					database.InitDB()
+					_, _ = database.InitDB()
 
 					config, _ := database.GetConfig()
 					config.TautulliURL = "http://invalid-url-123.local"
@@ -331,7 +337,7 @@ func TestApp_Scheduler(t *testing.T) {
 					smtpSrv := startMockSMTPServer(t)
 					smtpAddr := smtpSrv.listener.Addr().(*net.TCPAddr)
 
-					database.InitDB()
+					_, _ = database.InitDB()
 
 					config, _ := database.GetConfig()
 					config.TautulliURL = ts.URL

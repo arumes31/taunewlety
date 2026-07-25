@@ -17,8 +17,8 @@ import (
 )
 
 func TestSubscribersExport(t *testing.T) {
-	os.Setenv("DB_PATH", ":memory:")
-	defer os.Unsetenv("DB_PATH")
+	_ = os.Setenv("DB_PATH", ":memory:")
+	defer func() { _ = os.Unsetenv("DB_PATH") }()
 
 	gin.SetMode(gin.TestMode)
 
@@ -64,7 +64,7 @@ func TestSubscribersExport(t *testing.T) {
 	t.Run("DatabaseError", func(t *testing.T) {
 		db, _ := database.InitDB()
 		// Drop the table to cause an error
-		database.GetDB().Migrator().DropTable(&models.Subscriber{})
+		_ = database.GetDB().Migrator().DropTable(&models.Subscriber{})
 
 		w := httptest.NewRecorder()
 		_, r := gin.CreateTestContext(w)
@@ -81,8 +81,8 @@ func TestSubscribersExport(t *testing.T) {
 }
 
 func TestSubscribersImport(t *testing.T) {
-	os.Setenv("DB_PATH", ":memory:")
-	defer os.Unsetenv("DB_PATH")
+	_ = os.Setenv("DB_PATH", ":memory:")
+	defer func() { _ = os.Unsetenv("DB_PATH") }()
 
 	gin.SetMode(gin.TestMode)
 
@@ -95,7 +95,7 @@ func TestSubscribersImport(t *testing.T) {
 			_ = csvWriter.Write(record)
 		}
 		csvWriter.Flush()
-		writer.Close()
+		_ = writer.Close()
 		return &buf, writer.FormDataContentType()
 	}
 

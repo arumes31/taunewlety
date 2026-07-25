@@ -45,8 +45,8 @@ func importCSV(t *testing.T, h *Handler, rows []string) *httptest.ResponseRecord
 // display name is stored as the bare address, so it matches the duplicate
 // check and produces a usable RCPT TO.
 func TestSubscribersImport_NormalizesAddress(t *testing.T) {
-	os.Setenv("DB_PATH", ":memory:")
-	defer os.Unsetenv("DB_PATH")
+	_ = os.Setenv("DB_PATH", ":memory:")
+	defer func() { _ = os.Unsetenv("DB_PATH") }()
 	gin.SetMode(gin.TestMode)
 
 	db, err := database.InitDB()
@@ -81,8 +81,8 @@ func TestSubscribersImport_NormalizesAddress(t *testing.T) {
 // is what the duplicate check compares, so the same person cannot be imported
 // twice under two spellings.
 func TestSubscribersImport_DisplayNameIsADuplicate(t *testing.T) {
-	os.Setenv("DB_PATH", ":memory:")
-	defer os.Unsetenv("DB_PATH")
+	_ = os.Setenv("DB_PATH", ":memory:")
+	defer func() { _ = os.Unsetenv("DB_PATH") }()
 	gin.SetMode(gin.TestMode)
 
 	db, err := database.InitDB()
@@ -116,8 +116,8 @@ func TestSubscribersImport_DisplayNameIsADuplicate(t *testing.T) {
 // normalize identically to the import path — otherwise the same person could
 // be stored twice through two different entry points.
 func TestSubscriberAdd_NormalizesAddress(t *testing.T) {
-	os.Setenv("DB_PATH", ":memory:")
-	defer os.Unsetenv("DB_PATH")
+	_ = os.Setenv("DB_PATH", ":memory:")
+	defer func() { _ = os.Unsetenv("DB_PATH") }()
 	gin.SetMode(gin.TestMode)
 
 	db, err := database.InitDB()

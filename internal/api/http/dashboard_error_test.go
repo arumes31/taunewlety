@@ -19,8 +19,8 @@ import (
 // template comparison on total_pages would fail mid-render, and the form would
 // have been emitted with no CSRF token.
 func TestDashboardGet_DatabaseFailureRendersErrorPage(t *testing.T) {
-	os.Setenv("DB_PATH", ":memory:")
-	defer os.Unsetenv("DB_PATH")
+	_ = os.Setenv("DB_PATH", ":memory:")
+	defer func() { _ = os.Unsetenv("DB_PATH") }()
 	gin.SetMode(gin.TestMode)
 
 	tests := []struct {

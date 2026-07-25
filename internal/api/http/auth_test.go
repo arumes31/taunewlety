@@ -31,11 +31,11 @@ func TestMain(m *testing.M) {
 
 func TestLoginGet(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	os.Setenv("SESSION_SECRET", "test-secret")
-	defer os.Unsetenv("SESSION_SECRET")
+	_ = os.Setenv("SESSION_SECRET", "test-secret")
+	defer func() { _ = os.Unsetenv("SESSION_SECRET") }()
 
-	os.Setenv("DB_PATH", ":memory:")
-	defer os.Unsetenv("DB_PATH")
+	_ = os.Setenv("DB_PATH", ":memory:")
+	defer func() { _ = os.Unsetenv("DB_PATH") }()
 
 	db, err := database.InitDB()
 	if err != nil {
@@ -67,13 +67,13 @@ func TestLoginGet(t *testing.T) {
 func TestLoginPost(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	os.Setenv("DB_PATH", ":memory:")
-	defer os.Unsetenv("DB_PATH")
+	_ = os.Setenv("DB_PATH", ":memory:")
+	defer func() { _ = os.Unsetenv("DB_PATH") }()
 
 	setup := func() (*gin.Engine, string, string) {
-		os.Setenv("APP_USER", "admin")
-		os.Setenv("APP_PASS", "password")
-		os.Setenv("SESSION_SECRET", "test-secret")
+		_ = os.Setenv("APP_USER", "admin")
+		_ = os.Setenv("APP_PASS", "password")
+		_ = os.Setenv("SESSION_SECRET", "test-secret")
 
 		db, err := database.InitDB()
 		if err != nil {
@@ -231,19 +231,19 @@ func TestLoginPost(t *testing.T) {
 }
 
 func TestAuthHandlers_SessionSaveFailure(t *testing.T) {
-	os.Setenv("APP_USER", "admin")
-	os.Setenv("APP_PASS", "password")
-	os.Setenv("SESSION_SECRET", "test-secret-123")
+	_ = os.Setenv("APP_USER", "admin")
+	_ = os.Setenv("APP_PASS", "password")
+	_ = os.Setenv("SESSION_SECRET", "test-secret-123")
 	defer func() {
-		os.Unsetenv("APP_USER")
-		os.Unsetenv("APP_PASS")
-		os.Unsetenv("SESSION_SECRET")
+		_ = os.Unsetenv("APP_USER")
+		_ = os.Unsetenv("APP_PASS")
+		_ = os.Unsetenv("SESSION_SECRET")
 	}()
 
 	gin.SetMode(gin.TestMode)
 
-	os.Setenv("DB_PATH", ":memory:")
-	defer os.Unsetenv("DB_PATH")
+	_ = os.Setenv("DB_PATH", ":memory:")
+	defer func() { _ = os.Unsetenv("DB_PATH") }()
 
 	db, _ := database.InitDB()
 
@@ -285,8 +285,8 @@ func TestAuthHandlers_SessionSaveFailure(t *testing.T) {
 func TestLogoutGet(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	os.Setenv("DB_PATH", ":memory:")
-	defer os.Unsetenv("DB_PATH")
+	_ = os.Setenv("DB_PATH", ":memory:")
+	defer func() { _ = os.Unsetenv("DB_PATH") }()
 
 	db, _ := database.InitDB()
 

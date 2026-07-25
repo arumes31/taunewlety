@@ -38,7 +38,7 @@ func startMockSMTPServer(t *testing.T) *mockSMTPServer {
 				return
 			}
 			go func(c net.Conn) {
-				defer c.Close()
+				defer func() { _ = c.Close() }()
 				reader := bufio.NewReader(c)
 				writer := bufio.NewWriter(c)
 
@@ -93,12 +93,12 @@ func (s *mockSMTPServer) Close() {
 }
 
 func TestNewsletterHandlers(t *testing.T) {
-	os.Setenv("DB_PATH", ":memory:")
-	defer os.Unsetenv("DB_PATH")
+	_ = os.Setenv("DB_PATH", ":memory:")
+	defer func() { _ = os.Unsetenv("DB_PATH") }()
 
 	gin.SetMode(gin.TestMode)
-	os.Setenv("NOTIFY_EMAIL", "notify@example.com")
-	defer os.Unsetenv("NOTIFY_EMAIL")
+	_ = os.Setenv("NOTIFY_EMAIL", "notify@example.com")
+	defer func() { _ = os.Unsetenv("NOTIFY_EMAIL") }()
 
 	t.Run("NewsletterPreview", func(t *testing.T) {
 		tests := []struct {
@@ -364,11 +364,11 @@ func TestNewsletterHandlers(t *testing.T) {
 	})
 
 	t.Run("SendManual_GetConfigError", func(t *testing.T) {
-		os.Setenv("DB_PATH", ":memory:")
-		defer os.Unsetenv("DB_PATH")
+		_ = os.Setenv("DB_PATH", ":memory:")
+		defer func() { _ = os.Unsetenv("DB_PATH") }()
 		db, _ := database.InitDB()
 		sqlDB, _ := database.GetDB().DB()
-		sqlDB.Close()
+		_ = sqlDB.Close()
 
 		h := NewHandler(db)
 		r := gin.New()

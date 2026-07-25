@@ -20,22 +20,22 @@ func freePort(t *testing.T) string {
 	if err != nil {
 		t.Fatalf("failed to reserve a free port: %v", err)
 	}
-	defer l.Close()
+	defer func() { _ = l.Close() }()
 	return strconv.Itoa(l.Addr().(*net.TCPAddr).Port)
 }
 
 func TestMainFunc(t *testing.T) {
-	os.Setenv("PORT", freePort(t))
-	os.Setenv("DB_PATH", ":memory:")
-	os.Setenv("SESSION_SECRET", "main-test-secret-9876")
-	os.Setenv("APP_USER", "admin")
-	os.Setenv("APP_PASS", "password")
+	_ = os.Setenv("PORT", freePort(t))
+	_ = os.Setenv("DB_PATH", ":memory:")
+	_ = os.Setenv("SESSION_SECRET", "main-test-secret-9876")
+	_ = os.Setenv("APP_USER", "admin")
+	_ = os.Setenv("APP_PASS", "password")
 	defer func() {
-		os.Unsetenv("PORT")
-		os.Unsetenv("DB_PATH")
-		os.Unsetenv("SESSION_SECRET")
-		os.Unsetenv("APP_USER")
-		os.Unsetenv("APP_PASS")
+		_ = os.Unsetenv("PORT")
+		_ = os.Unsetenv("DB_PATH")
+		_ = os.Unsetenv("SESSION_SECRET")
+		_ = os.Unsetenv("APP_USER")
+		_ = os.Unsetenv("APP_PASS")
 	}()
 
 	var triggerCancel context.CancelFunc
@@ -93,17 +93,17 @@ func TestDefaultSetupSignalHandler(t *testing.T) {
 
 func TestMainFunc_ShutdownError(t *testing.T) {
 	port := freePort(t)
-	os.Setenv("PORT", port)
-	os.Setenv("DB_PATH", ":memory:")
-	os.Setenv("SESSION_SECRET", "main-test-secret-9876")
-	os.Setenv("APP_USER", "admin")
-	os.Setenv("APP_PASS", "password")
+	_ = os.Setenv("PORT", port)
+	_ = os.Setenv("DB_PATH", ":memory:")
+	_ = os.Setenv("SESSION_SECRET", "main-test-secret-9876")
+	_ = os.Setenv("APP_USER", "admin")
+	_ = os.Setenv("APP_PASS", "password")
 	defer func() {
-		os.Unsetenv("PORT")
-		os.Unsetenv("DB_PATH")
-		os.Unsetenv("SESSION_SECRET")
-		os.Unsetenv("APP_USER")
-		os.Unsetenv("APP_PASS")
+		_ = os.Unsetenv("PORT")
+		_ = os.Unsetenv("DB_PATH")
+		_ = os.Unsetenv("SESSION_SECRET")
+		_ = os.Unsetenv("APP_USER")
+		_ = os.Unsetenv("APP_PASS")
 	}()
 
 	// Force Shutdown to time out/error immediately
@@ -148,7 +148,7 @@ func TestMainFunc_ShutdownError(t *testing.T) {
 	}
 	// Hold the connection open so the (1ns) shutdown context deadline is
 	// exceeded before the server can drain, forcing a shutdown error.
-	defer activeConn.Close()
+	defer func() { _ = activeConn.Close() }()
 
 	if triggerCancel == nil {
 		t.Fatal("expected setupSignalHandler to set triggerCancel, but it is nil")

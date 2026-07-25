@@ -133,7 +133,7 @@ func TestTautulliClient_GetRecentlyAdded(t *testing.T) {
 				w.WriteHeader(tt.statusCode)
 				if tt.response != nil {
 					if s, ok := tt.response.(string); ok {
-						fmt.Fprint(w, s)
+						_, _ = fmt.Fprint(w, s)
 					} else {
 						_ = json.NewEncoder(w).Encode(tt.response)
 					}
@@ -270,7 +270,7 @@ func TestTautulliClient_GetWatchHistory(t *testing.T) {
 				w.WriteHeader(tt.statusCode)
 				if tt.response != nil {
 					if s, ok := tt.response.(string); ok {
-						fmt.Fprint(w, s)
+						_, _ = fmt.Fprint(w, s)
 					} else {
 						_ = json.NewEncoder(w).Encode(tt.response)
 					}
@@ -491,7 +491,7 @@ func TestTautulliClient_GetTopWatched(t *testing.T) {
 				w.WriteHeader(tt.statusCode)
 				if tt.response != nil {
 					if s, ok := tt.response.(string); ok {
-						fmt.Fprint(w, s)
+						_, _ = fmt.Fprint(w, s)
 					} else {
 						_ = json.NewEncoder(w).Encode(tt.response)
 					}
@@ -642,7 +642,7 @@ func TestTautulliClient_GetTopGenres(t *testing.T) {
 				w.WriteHeader(tt.statusCode)
 				if tt.response != nil {
 					if s, ok := tt.response.(string); ok {
-						fmt.Fprint(w, s)
+						_, _ = fmt.Fprint(w, s)
 					} else {
 						_ = json.NewEncoder(w).Encode(tt.response)
 					}
@@ -811,7 +811,7 @@ func TestTautulliClient_GetHomeStatsAll(t *testing.T) {
 				w.WriteHeader(tt.statusCode)
 				if tt.response != nil {
 					if s, ok := tt.response.(string); ok {
-						fmt.Fprint(w, s)
+						_, _ = fmt.Fprint(w, s)
 					} else {
 						_ = json.NewEncoder(w).Encode(tt.response)
 					}

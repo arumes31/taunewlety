@@ -33,15 +33,15 @@ func TestUnsubscribeHandlers(t *testing.T) {
 	sendUnsubscribeEmail = func(email string) {}
 	defer func() { sendUnsubscribeEmail = originalSendEmail }()
 
-	os.Setenv("DB_PATH", ":memory:")
-	defer os.Unsetenv("DB_PATH")
+	_ = os.Setenv("DB_PATH", ":memory:")
+	defer func() { _ = os.Unsetenv("DB_PATH") }()
 
 	db, err := database.InitDB()
 	if err != nil {
 		t.Fatalf("failed to init DB: %v", err)
 	}
-	os.Setenv("SESSION_SECRET", "test-secret-123")
-	defer os.Unsetenv("SESSION_SECRET")
+	_ = os.Setenv("SESSION_SECRET", "test-secret-123")
+	defer func() { _ = os.Unsetenv("SESSION_SECRET") }()
 
 	// Pre-create a subscriber
 	database.GetDB().Create(&models.Subscriber{Email: "test@example.com"})
@@ -213,8 +213,8 @@ func TestUnsubscribeHandlers_CaptchaGenerationError(t *testing.T) {
 }
 
 func TestUnsubscribePost_MissingCaptchaInSession(t *testing.T) {
-	os.Setenv("DB_PATH", ":memory:")
-	defer os.Unsetenv("DB_PATH")
+	_ = os.Setenv("DB_PATH", ":memory:")
+	defer func() { _ = os.Unsetenv("DB_PATH") }()
 
 	db, _ := database.InitDB()
 	gin.SetMode(gin.TestMode)
@@ -254,8 +254,8 @@ func TestUnsubscribePost_CaptchaStringAndDBError(t *testing.T) {
 	sendUnsubscribeEmail = func(email string) {}
 	defer func() { sendUnsubscribeEmail = originalSendEmail }()
 
-	os.Setenv("DB_PATH", ":memory:")
-	defer os.Unsetenv("DB_PATH")
+	_ = os.Setenv("DB_PATH", ":memory:")
+	defer func() { _ = os.Unsetenv("DB_PATH") }()
 
 	db, _ := database.InitDB()
 	database.GetDB().Create(&models.Subscriber{Email: "test@example.com"})
@@ -328,8 +328,8 @@ func TestUnsubscribePost_EdgeCases(t *testing.T) {
 	sendUnsubscribeEmail = func(email string) {}
 	defer func() { sendUnsubscribeEmail = originalSendEmail }()
 
-	os.Setenv("DB_PATH", ":memory:")
-	defer os.Unsetenv("DB_PATH")
+	_ = os.Setenv("DB_PATH", ":memory:")
+	defer func() { _ = os.Unsetenv("DB_PATH") }()
 
 	db, _ := database.InitDB()
 	gin.SetMode(gin.TestMode)

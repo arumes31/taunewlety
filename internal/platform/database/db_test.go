@@ -14,8 +14,8 @@ import (
 )
 
 func TestInitDB(t *testing.T) {
-	os.Setenv("DB_PATH", ":memory:")
-	defer os.Unsetenv("DB_PATH")
+	_ = os.Setenv("DB_PATH", ":memory:")
+	defer func() { _ = os.Unsetenv("DB_PATH") }()
 
 	// Backup and restore globals
 	oldDB := GetDB()
@@ -193,17 +193,17 @@ func TestInitDB(t *testing.T) {
 	})
 
 	t.Run("RealOpenDB_Postgres", func(t *testing.T) {
-		os.Setenv("DB_TYPE", "postgres")
-		os.Setenv("DB_HOST", "localhost")
-		os.Setenv("DB_USER", "user")
-		os.Setenv("DB_PASSWORD", "pass")
-		os.Setenv("DB_NAME", "db")
+		_ = os.Setenv("DB_TYPE", "postgres")
+		_ = os.Setenv("DB_HOST", "localhost")
+		_ = os.Setenv("DB_USER", "user")
+		_ = os.Setenv("DB_PASSWORD", "pass")
+		_ = os.Setenv("DB_NAME", "db")
 		defer func() {
-			os.Unsetenv("DB_TYPE")
-			os.Unsetenv("DB_HOST")
-			os.Unsetenv("DB_USER")
-			os.Unsetenv("DB_PASSWORD")
-			os.Unsetenv("DB_NAME")
+			_ = os.Unsetenv("DB_TYPE")
+			_ = os.Unsetenv("DB_HOST")
+			_ = os.Unsetenv("DB_USER")
+			_ = os.Unsetenv("DB_PASSWORD")
+			_ = os.Unsetenv("DB_NAME")
 		}()
 
 		// This will fail to connect but should cover the branch

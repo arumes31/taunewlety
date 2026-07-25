@@ -62,8 +62,9 @@ graph TD
 
 ### 🛡️ Security & Privacy
 - **Secure Unsubscribe**: Confirmation flow protected by math-based **Captcha**.
-- **Local AI**: No data leaves your server; all generation happens locally on your CPU.
-- **Hardened Server**: Built-in Slowloris protection and secure session management.
+- **Local AI & Data Privacy**: No data leaves your server; subscriber emails are strictly sanitized and omitted from system logs.
+- **Cryptographically Secure Randomization**: Uses `crypto/rand` for unguessable "Surprise Me" recommendations.
+- **Hardened Server**: Built-in Slowloris protection, secure session management, and audited against Gosec & Govulncheck.
 - **Containerized**: Runs securely in isolated Docker containers with a dedicated PostgreSQL backend.
 
 ---

@@ -190,7 +190,7 @@ func (a *App) setupScheduler() {
 			database.GetDB().Where("active = ?", true).Find(&subs)
 			for _, sub := range subs {
 				if err := svc.SendEmail(sub.Email, subject, body); err != nil {
-					a.logger.Error("Failed to send email", zap.String("email", sub.Email), zap.Error(err))
+					a.logger.Error("Failed to send email", zap.Error(err))
 				}
 			}
 		}
