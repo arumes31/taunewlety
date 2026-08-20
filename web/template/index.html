@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - TauNewlety</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: #f4f7f6;
+            margin: 0;
+            padding: 0;
+        }
+
+        .sidebar {
+            width: 250px;
+            background: #343a40;
+            color: white;
+            height: 100vh;
+            position: fixed;
+            padding: 2rem 1rem;
+        }
+
+        .sidebar h1 {
+            font-size: 1.5rem;
+            margin-bottom: 2rem;
+            color: #fff;
+        }
+
+        .sidebar-nav a {
+            display: block;
+            color: #adb5bd;
+            text-decoration: none;
+            padding: 0.75rem 1rem;
+            border-radius: 4px;
+            margin-bottom: 0.5rem;
+        }
+
+        .sidebar-nav a:hover,
+        .sidebar-nav a.active {
+            background: #495057;
+            color: white;
+        }
+
+        .logout-btn {
+            display: block;
+            color: #adb5bd;
+            text-decoration: none;
+            padding: 0.75rem 1rem;
+            border-radius: 4px;
+            margin-top: 1rem;
+            border: 1px solid #6c757d;
+            text-align: center;
+        }
+
+        .logout-btn:hover {
+            background: #dc3545;
+            color: white;
+            border-color: #dc3545;
+        }
+
+        .main-content {
+            margin-left: 250px;
+            padding: 2rem;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: white;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        h2 {
+            color: #333;
+            margin-top: 0;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .form-section {
+            margin-bottom: 2rem;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 1rem;
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+        }
+
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: #666;
+            font-size: 0.9rem;
+        }
+
+        input,
+        select {
+            width: 100%;
+            padding: 0.6rem;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+
+        .btn {
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 1rem;
+            text-decoration: none;
+            display: inline-block;
+            text-align: center;
+        }
+
+        .btn-primary {
+            background: #007bff;
+            color: white;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn-warning {
+            background: #ffc107;
+            color: #212529;
+        }
+
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn-sm {
+            padding: 0.4rem 0.8rem;
+            font-size: 0.85rem;
+        }
+
+        .stat-card {
+            background: #e9ecef;
+            padding: 1.5rem;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #007bff;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+        }
+
+        th,
+        td {
+            text-align: left;
+            padding: 0.75rem;
+            border-bottom: 1px solid #dee2e6;
+        }
+
+        .pagination {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 1rem;
+            align-items: center;
+        }
+
+        .pagination a,
+        .pagination span {
+            padding: 0.5rem 0.75rem;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            text-decoration: none;
+            color: #007bff;
+        }
+
+        .pagination .active {
+            background: #007bff;
+            color: white;
+            border-color: #007bff;
+        }
+
+        .pagination .disabled {
+            color: #6c757d;
+            pointer-events: none;
+        }
+
+        #live-log {
+            background: #000;
+            color: #00ff00;
+            font-family: monospace;
+            padding: 1rem;
+            height: 200px;
+            overflow-y: auto;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            white-space: pre-wrap;
+        }
+
+        .actions {
+            margin-top: 1.5rem;
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="sidebar">
+        <div style="text-align: center; margin-bottom: 2rem;">
+            <img src="/static/logo.svg" alt="TauNewlety Logo" style="width: 180px; height: auto;">
+        </div>
+        <div class="sidebar-nav">
+            <a href="#" class="active" data-tab="settings">Settings</a>
+            <a href="#" data-tab="subscribers">Subscribers</a>
+            <a href="#" data-tab="stats">Stats &amp; Logs</a>
+            <a href="#" data-tab="blacklist">Blacklist</a>
+            <form action="/logout" method="POST" style="margin: 0; padding: 0;">
+                <input type="hidden" name="csrf_token" value="{{.csrf_token}}">
+                <button type="submit" class="logout-btn"
+                    style="width: 100%; cursor: pointer; font-size: 1rem; font-family: inherit; background: transparent; transition: all 0.2s;">Logout</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="main-content">
+        <div id="settings" class="tab-content active container">
+            <form action="/settings" method="POST">
+                <input type="hidden" name="csrf_token" value="{{.csrf_token}}">
+                <!-- (Settings fields remain same, adding new ones) -->
+                <div class="form-section">
+                    <h2>Tautulli Configuration</h2>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>Tautulli URL</label>
+                            <input type="text" name="tautulli_url" value="{{.config.TautulliURL}}"
+                                placeholder="http://tautulli:8181">
+                        </div>
+                        <div class="form-group">
+                            <label>Tautulli API Key</label>
+                            <input type="password" name="tautulli_api_key" value="" autocomplete="new-password">
+                            <small style="color: #888;">Leave blank to keep the current value.</small>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-section">
+                    <h2>Ollama Configuration</h2>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>Ollama URL</label>
+                            <input type="text" name="ollama_url" value="{{.config.OllamaURL}}"
+                                placeholder="http://ollama:11434">
+                        </div>
+                        <div class="form-group">
+                            <label>Ollama Model</label>
+                            <input type="text" name="ollama_model" value="{{.config.OllamaModel}}" placeholder="llama3">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-section">
+                    <h2>SMTP Configuration</h2>
+                    <div class="form-grid">
+                        <div class="form-group"><label>Host</label><input type="text" name="smtp_host"
+                                value="{{.config.SMTPHost}}"></div>
+                        <div class="form-group"><label>Port</label><input type="number" name="smtp_port"
+                                value="{{.config.SMTPPort}}"></div>
+                        <div class="form-group"><label>User</label><input type="text" name="smtp_user"
+                                value="{{.config.SMTPUser}}"></div>
+                        <div class="form-group"><label>Pass</label><input type="password" name="smtp_pass" value=""
+                                autocomplete="new-password"><small style="color: #888;">Leave blank to keep the current
+                                value.</small></div>
+                        <div class="form-group"><label>Sender Email</label><input type="email" name="smtp_sender"
+                                value="{{.config.SMTPSender}}"></div>
+                    </div>
+                </div>
+
+                <div class="form-section">
+                    <h2>Application Settings</h2>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>Application Base URL (e.g., http://your-ip:8080)</label>
+                            <input type="text" name="app_base_url" value="{{.config.AppBaseURL}}"
+                                placeholder="http://192.168.1.100:8080">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-section">
+                    <h2>Plex Integration</h2>
+                    <p style="color: #888; font-size: 0.85rem; margin-bottom: 1rem;">These fields are for future Plex
+                        integration features and are optional.</p>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>Plex URL</label>
+                            <input type="text" name="plex_url" value="{{.config.PlexURL}}"
+                                placeholder="http://plex:32400">
+                        </div>
+                        <div class="form-group">
+                            <label>Plex Token</label>
+                            <input type="password" name="plex_token" value="" autocomplete="new-password">
+                            <small style="color: #888;">Leave blank to keep the current value.</small>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-section">
+                    <h2>Notification Channels</h2>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>Discord Webhook</label>
+                            <input type="text" name="discord_webhook" value="{{.config.DiscordWebhook}}">
+                        </div>
+                        <div class="form-group">
+                            <label>Telegram Bot Token</label>
+                            <input type="password" name="telegram_bot_token" value="" autocomplete="new-password">
+                            <small style="color: #888;">Leave blank to keep the current value.</small>
+                        </div>
+                        <div class="form-group">
+                            <label>Telegram Chat ID</label>
+                            <input type="text" name="telegram_chat_id" value="{{.config.TelegramChatID}}">
+                        </div>
+                        <div class="form-group">
+                            <label>SMTP Encryption</label>
+                            <select name="smtp_encryption"
+                                style="width: 100%; padding: 0.6rem; border: 1px solid #ddd; border-radius: 4px;">
+                                <option value="starttls" {{if eq .config.SMTPEncryption "starttls" }}selected{{end}}>
+                                    STARTTLS (port 587)</option>
+                                <option value="tls" {{if eq .config.SMTPEncryption "tls" }}selected{{end}}>TLS (port
+                                    465)</option>
+                                <option value="none" {{if eq .config.SMTPEncryption "none" }}selected{{end}}>None (not
+                                    recommended)</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-section">
+                    <h2>Newsletter Settings</h2>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>Newsletter Time (HH:MM, 24h format)</label>
+                            <input type="time" name="newsletter_time" value="{{.config.NewsletterTime}}" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Recommendation Count</label>
+                            <input type="number" name="rec_count" value="{{.config.RecCount}}" min="1" max="100"
+                                required>
+                        </div>
+                        <div class="form-group">
+                            <label>Language</label>
+                            <select name="language"
+                                style="width: 100%; padding: 0.6rem; border: 1px solid #ddd; border-radius: 4px;">
+                                <option value="en_US" {{if eq .config.Language "en_US" }}selected{{end}}>English (US)
+                                </option>
+                                <option value="de_DE" {{if eq .config.Language "de_DE" }}selected{{end}}>German</option>
+                                <option value="fr_FR" {{if eq .config.Language "fr_FR" }}selected{{end}}>French</option>
+                                <option value="es_ES" {{if eq .config.Language "es_ES" }}selected{{end}}>Spanish
+                                </option>
+                                <option value="it_IT" {{if eq .config.Language "it_IT" }}selected{{end}}>Italian
+                                </option>
+                                <option value="nl_NL" {{if eq .config.Language "nl_NL" }}selected{{end}}>Dutch</option>
+                                <option value="pt_PT" {{if eq .config.Language "pt_PT" }}selected{{end}}>Portuguese
+                                </option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn btn-primary">Save Settings</button>
+            </form>
+
+            <div class="actions">
+                <a href="/preview" class="btn btn-secondary" target="_blank">Preview Newsletter</a>
+                <button type="button" id="send-now" class="btn btn-success">Send Manual Newsletter</button>
+            </div>
+        </div>
+
+        <div id="subscribers" class="tab-content container">
+            <h2>Subscriber Management</h2>
+            <form action="/subscribers" method="POST" style="margin-bottom: 2rem;">
+                <input type="hidden" name="csrf_token" value="{{.csrf_token}}">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Email Address</label>
+                        <input type="email" name="email" required>
+                    </div>
+                    <div class="form-group">
+                        <label>&nbsp;</label>
+                        <button type="submit" class="btn btn-primary">Add Subscriber</button>
+                    </div>
+                </div>
+            </form>
+
+            <div style="margin-bottom: 1rem; display: flex; gap: 0.5rem;">
+                <a href="/subscribers/export" class="btn btn-primary" style="background: #28a745;">Export CSV</a>
+                <form action="/subscribers/import" method="POST" enctype="multipart/form-data"
+                    style="display: inline-flex; align-items: center; gap: 0.5rem;">
+                    <input type="hidden" name="csrf_token" value="{{.csrf_token}}">
+                    <input type="file" name="file" accept=".csv" required style="padding: 0.4rem;">
+                    <button type="submit" class="btn btn-primary" style="background: #17a2b8;">Import CSV</button>
+                </form>
+            </div>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>Email</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .subscribers}}
+                    <tr>
+                        <td>{{.Email}}</td>
+                        <td>{{if .Active}}<span style="color: green;">Active</span>{{else}}<span
+                                style="color: #6c757d;">Inactive</span>{{end}}</td>
+                        <td>
+                            <form action="/subscribers/toggle" method="POST" style="display:inline;">
+                                <input type="hidden" name="csrf_token" value="{{$.csrf_token}}">
+                                <input type="hidden" name="id" value="{{.ID}}">
+                                {{if .Active}}
+                                <button type="submit" class="btn btn-warning btn-sm">Deactivate</button>
+                                {{else}}
+                                <button type="submit" class="btn btn-success btn-sm">Activate</button>
+                                {{end}}
+                            </form>
+                            <form action="/subscribers/delete" method="POST" style="display:inline;">
+                                <input type="hidden" name="csrf_token" value="{{$.csrf_token}}">
+                                <input type="hidden" name="id" value="{{.ID}}">
+                                <button type="submit" class="btn btn-danger btn-sm">Remove</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+
+            {{if gt .total_pages 1}}
+            <div class="pagination">
+                {{if gt .page 1}}
+                <a href="/?page={{sub .page 1}}&per_page={{.per_page}}">Prev</a>
+                {{else}}
+                <span class="disabled">Prev</span>
+                {{end}}
+
+                {{$curPage := .page}}
+                {{$totalPages := .total_pages}}
+                {{$perPage := .per_page}}
+                {{range $i := iteratePages .total_pages}}
+                {{if eq $i $curPage}}
+                <span class="active">{{$i}}</span>
+                {{else}}
+                <a href="/?page={{$i}}&per_page={{$perPage}}">{{$i}}</a>
+                {{end}}
+                {{end}}
+
+                {{if lt .page .total_pages}}
+                <a href="/?page={{add .page 1}}&per_page={{.per_page}}">Next</a>
+                {{else}}
+                <span class="disabled">Next</span>
+                {{end}}
+            </div>
+            {{end}}
+        </div>
+
+        <div id="blacklist" class="tab-content container">
+            <h2>Blacklist Management</h2>
+            <p style="color: #888; font-size: 0.85rem; margin-bottom: 1rem;">Blacklisted items are excluded from
+                newsletter recommendations for a set period.</p>
+
+            {{if .blacklist}}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Media ID</th>
+                        <th>Media Type</th>
+                        <th>Expires At</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .blacklist}}
+                    <tr>
+                        <td>{{.MediaID}}</td>
+                        <td>{{.MediaType}}</td>
+                        <td>{{if gt .ExpiresAt 0}}{{formatTime .ExpiresAt}}{{else}}Never{{end}}</td>
+                        <td>
+                            <form action="/blacklist/delete" method="POST" style="display:inline;">
+                                <input type="hidden" name="csrf_token" value="{{$.csrf_token}}">
+                                <input type="hidden" name="id" value="{{.ID}}">
+                                <button type="submit" class="btn btn-danger btn-sm">Remove</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+            {{else}}
+            <p style="color: #6c757d;">No blacklist entries found.</p>
+            {{end}}
+        </div>
+
+        <div id="stats" class="tab-content container">
+            <h2>System Stats & Logs</h2>
+            <div class="form-grid" style="margin-bottom: 2rem;">
+                <div class="stat-card">
+                    <div class="stat-value">{{.totalTokens}}</div>
+                    <label>Total AI Tokens Used</label>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">{{.total_subscribers}}</div>
+                    <label>Total Subscribers</label>
+                </div>
+            </div>
+
+            <h3>Server Logs</h3>
+            <div id="live-log">Loading logs...</div>
+        </div>
+    </div>
+
+    <script src="/static/js/dashboard.js"></script>
+</body>
+
+</html>

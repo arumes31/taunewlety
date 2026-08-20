@@ -1,0 +1,70 @@
+services:
+  app:
+    build:
+      context: ../../
+      dockerfile: deployments/docker/Dockerfile
+    ports:
+      # Bound to loopback so the app is not reachable from the network in a way
+      # that bypasses the TLS reverse proxy. Point the proxy at 127.0.0.1:8080,
+      # or drop this mapping entirely and attach the proxy to this network.
+      - "127.0.0.1:8080:8080"
+    environment:
+      - APP_USER=${APP_USER:?APP_USER is required}
+      - APP_PASS=${APP_PASS:?APP_PASS is required}
+      - SESSION_SECRET=${SESSION_SECRET:?SESSION_SECRET is required}
+      - NOTIFY_EMAIL=${NOTIFY_EMAIL}
+      - DB_TYPE=postgres
+      # Defaults to the bundled db service; override in .env to point at an
+      # external PostgreSQL server.
+      - DB_HOST=${DB_HOST:-db}
+      - DB_PORT=${DB_PORT:-5432}
+      - DB_USER=${DB_USER:-tauuser}
+      - DB_PASSWORD=${DB_PASSWORD:?DB_PASSWORD is required}
+      - DB_NAME=${DB_NAME:-taunewlety}
+      # The bundled Postgres serves no TLS and is only reachable on this
+      # internal network. Set DB_SSLMODE=require (or stricter) in .env
+      # alongside DB_HOST when using an external database.
+      - DB_SSLMODE=${DB_SSLMODE:-disable}
+      # Direct HTTPS: set both in .env (to container paths) and uncomment the
+      # certificate mounts below.
+      - TLS_CERT=${TLS_CERT:-}
+      - TLS_KEY=${TLS_KEY:-}
+    # volumes:
+    #   - ./certs/cert.pem:/certs/cert.pem:ro
+    #   - ./certs/key.pem:/certs/key.pem:ro
+    depends_on:
+      db:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=${DB_USER:-tauuser}
+      - POSTGRES_PASSWORD=${DB_PASSWORD:?DB_PASSWORD is required}
+      - POSTGRES_DB=${DB_NAME:-taunewlety}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-tauuser} -d ${DB_NAME:-taunewlety}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      # Loopback only: the Ollama API is unauthenticated, and the app reaches
+      # it over the internal network as http://ollama:11434 regardless.
+      - "127.0.0.1:11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+      - ../../scripts/sh/init-ollama.sh:/init-ollama.sh
+    entrypoint: ["/bin/sh", "/init-ollama.sh"]
+    environment:
+      - OLLAMA_MODEL=llama3.2:3b
+
+volumes:
+  postgres_data:
+  ollama_data:
