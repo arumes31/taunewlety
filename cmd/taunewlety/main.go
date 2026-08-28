@@ -3,6 +3,9 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
+	"encoding/pem"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -59,9 +62,9 @@ func main() {
 func runHealthcheck() error {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	if os.Getenv("TLS_CERT") != "" && os.Getenv("TLS_KEY") != "" {
-		// The probe is strictly loopback-only and validates application liveness,
-		// while the public TLS endpoint remains fully verified by clients.
-		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} // #nosec G402
+		if err := configureHealthcheckTLS(transport, os.Getenv("TLS_CERT")); err != nil {
+			return err
+		}
 	}
 	client := &http.Client{Transport: transport, Timeout: 2 * time.Second}
 
@@ -76,6 +79,41 @@ func runHealthcheck() error {
 	}()
 	if response.StatusCode != http.StatusOK {
 		return fmt.Errorf("health endpoint returned %s", response.Status)
+	}
+	return nil
+}
+
+func configureHealthcheckTLS(transport *http.Transport, certificatePath string) error {
+	// #nosec G304,G703 -- this is the same operator-configured certificate path the server loads.
+	certificatePEM, err := os.ReadFile(certificatePath)
+	if err != nil {
+		return fmt.Errorf("read healthcheck certificate: %w", err)
+	}
+	block, _ := pem.Decode(certificatePEM)
+	if block == nil || block.Type != "CERTIFICATE" {
+		return errors.New("healthcheck certificate is not valid PEM")
+	}
+	certificate, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return fmt.Errorf("parse healthcheck certificate: %w", err)
+	}
+	serverName := certificate.Subject.CommonName
+	if len(certificate.DNSNames) > 0 {
+		serverName = certificate.DNSNames[0]
+	} else if len(certificate.IPAddresses) > 0 {
+		serverName = certificate.IPAddresses[0].String()
+	}
+	if serverName == "" {
+		return errors.New("healthcheck certificate has no verifiable name")
+	}
+	roots := x509.NewCertPool()
+	if !roots.AppendCertsFromPEM(certificatePEM) {
+		return errors.New("trust healthcheck certificate")
+	}
+	transport.TLSClientConfig = &tls.Config{
+		MinVersion: tls.VersionTLS12,
+		RootCAs:    roots,
+		ServerName: serverName,
 	}
 	return nil
 }
