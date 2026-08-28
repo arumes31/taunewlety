@@ -3,6 +3,7 @@ package http
 import (
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
@@ -54,6 +55,41 @@ func TestLoginRateLimiter_check(t *testing.T) {
 			t.Error("expected different IP to be allowed")
 		}
 	})
+}
+
+func TestLoginRateLimiterSweeperLifecycle(t *testing.T) {
+	limiter := &loginRateLimiter{
+		attempts: map[string]*loginAttempt{
+			"expired": {count: 1, lastTime: time.Now().Add(-time.Hour)},
+		},
+		maxAttempts: 5,
+		window:      time.Minute,
+	}
+	limiter.startSweeper(time.Millisecond)
+
+	deadline := time.Now().Add(time.Second)
+	for {
+		limiter.mu.Lock()
+		_, exists := limiter.attempts["expired"]
+		limiter.mu.Unlock()
+		if !exists {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("sweeper did not remove expired attempt")
+		}
+		time.Sleep(time.Millisecond)
+	}
+
+	var callers sync.WaitGroup
+	for range 32 {
+		callers.Add(1)
+		go func() {
+			defer callers.Done()
+			limiter.Close()
+		}()
+	}
+	callers.Wait()
 }
 
 func TestLoginRateLimiter_recordFailure(t *testing.T) {

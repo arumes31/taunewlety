@@ -18,6 +18,9 @@ type loginRateLimiter struct {
 	attempts    map[string]*loginAttempt
 	maxAttempts int
 	window      time.Duration
+	stop        chan struct{}
+	stopOnce    sync.Once
+	sweeperWG   sync.WaitGroup
 }
 
 var loginLimiter = &loginRateLimiter{
@@ -46,12 +49,43 @@ func (l *loginRateLimiter) sweep() {
 
 // startSweeper runs sweep on a ticker for the lifetime of the process.
 func (l *loginRateLimiter) startSweeper(interval time.Duration) {
+	l.mu.Lock()
+	if l.stop != nil {
+		l.mu.Unlock()
+		return
+	}
+	l.stop = make(chan struct{})
+	stop := l.stop
+	l.sweeperWG.Add(1)
+	l.mu.Unlock()
+
 	ticker := time.NewTicker(interval)
 	go func() {
-		for range ticker.C {
-			l.sweep()
+		defer l.sweeperWG.Done()
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				l.sweep()
+			case <-stop:
+				return
+			}
 		}
 	}()
+}
+
+// Close stops the background sweeper and waits for it to exit. It is safe to
+// call more than once or concurrently.
+func (l *loginRateLimiter) Close() {
+	l.mu.Lock()
+	stop := l.stop
+	l.mu.Unlock()
+	if stop == nil {
+		return
+	}
+
+	l.stopOnce.Do(func() { close(stop) })
+	l.sweeperWG.Wait()
 }
 
 func (l *loginRateLimiter) check(ip string) bool {
