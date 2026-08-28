@@ -11,16 +11,13 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.0
         with:
           fetch-depth: 0
 
-      - name: Fix safe.directory
-        run: git config --global --add safe.directory /mnt/c/DR/Nextcloud/BUILD/taunewlety
-
       - name: Bump version and push tag
         id: tag_version
-        uses: anothrNick/github-tag-action@1.64.0
+        uses: anothrNick/github-tag-action@c360518fb8131e99795f8208f8a6105ceca55ec2 # 1.64.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           WITH_V: true

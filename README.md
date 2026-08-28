@@ -194,7 +194,7 @@ The container healthcheck follows the same switch, probing `https://localhost:$P
 ---
 
 ## 🛠 Tech Stack
-- **Backend**: Go 1.26 (Standard Layout)
+- **Backend**: Go 1.27 (Standard Layout)
 - **Frontend**: Vanilla CSS & HTML Templates (No external CDNs)
 - **Database**: PostgreSQL (GORM)
 - **AI**: Ollama (Llama 3.2:3b)
@@ -216,6 +216,9 @@ Following Go best practices:
 
 ## 🤝 Contributing
 Contributions are welcome! Please check the `v2_test` branch for the latest work. Ensure all new code includes unit tests (aiming for 100% coverage).
+
+Security reports should follow [SECURITY.md](SECURITY.md) and must not be filed
+as public issues.
 
 ---
 

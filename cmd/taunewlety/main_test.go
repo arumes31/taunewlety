@@ -11,6 +11,18 @@ import (
 	"time"
 )
 
+func TestHealthcheckURL(t *testing.T) {
+	t.Setenv("PORT", "9090")
+	if got := healthcheckURL(); got != "http://127.0.0.1:9090/health" {
+		t.Fatalf("healthcheckURL() = %q", got)
+	}
+	t.Setenv("TLS_CERT", "/cert.pem")
+	t.Setenv("TLS_KEY", "/key.pem")
+	if got := healthcheckURL(); got != "https://127.0.0.1:9090/health" {
+		t.Fatalf("TLS healthcheckURL() = %q", got)
+	}
+}
+
 // freePort reserves an ephemeral port and releases it, returning the port
 // number as a string. This avoids flaky failures from hardcoded ports that
 // may already be in use on the test machine.

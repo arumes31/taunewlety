@@ -1,45 +1,40 @@
 # Build stage
-FROM golang:1.26-alpine AS builder
+FROM golang:1.27-alpine@sha256:4c9fe60190a2a3350ddc51de80d0224b8a6698d12bdfc999fee45ea9d6c46dbc AS builder
 
 WORKDIR /app
 
 # Copy go.mod and go.sum
 COPY go.mod go.sum ./
-RUN go mod download
+RUN go mod download && go mod verify
 
 # Copy source code
 COPY . .
 
 # Build the app with version injection
 ARG VERSION=v0.1-dev
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-X 'taunewlety/internal/app/taunewlety.Version=${VERSION}'" -o main ./cmd/taunewlety/main.go
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath \
+    -ldflags="-s -w -X 'taunewlety/internal/app/taunewlety.Version=${VERSION}'" \
+    -o main ./cmd/taunewlety \
+    && mkdir -p /runtime/data
 
 
 # Final stage
-FROM alpine:3.21
+FROM scratch
 
 WORKDIR /app
 
-COPY --from=builder /app/main .
-COPY --from=builder /app/web ./web
-
-RUN apk add --no-cache wget
+COPY --from=builder --chown=10001:10001 /app/main .
+COPY --from=builder --chown=10001:10001 /app/web ./web
+COPY --from=builder --chown=10001:10001 /runtime/data /data
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
 # For production deployments, use DB_TYPE=postgres instead of SQLite.
 VOLUME /data
 
-# Probe over HTTPS when the server is configured for direct TLS, otherwise
-# plain HTTP. Certificate validation is skipped because the probe targets
-# localhost, where the certificate's hostname will not match.
-# This is a GET, not --spider: --spider issues a HEAD, and the router only
-# answers GET on /health, so a spider probe always reports 404.
-HEALTHCHECK --interval=30s --timeout=3s \
-  CMD sh -c 'if [ -n "$TLS_CERT" ] && [ -n "$TLS_KEY" ]; then \
-        wget --no-verbose --tries=1 --no-check-certificate -O /dev/null "https://localhost:${PORT:-8080}/health"; \
-      else \
-        wget --no-verbose --tries=1 -O /dev/null "http://localhost:${PORT:-8080}/health"; \
-      fi' || exit 1
+HEALTHCHECK --interval=30s --timeout=3s CMD ["./main", "healthcheck"]
 
 EXPOSE 8080
+
+USER 10001:10001
 
 CMD ["./main"]

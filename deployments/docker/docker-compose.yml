@@ -37,9 +37,15 @@ services:
         condition: service_healthy
       ollama:
         condition: service_started
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
 
   db:
-    image: postgres:16-alpine
+    image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777 # 16.14-alpine3.24
     environment:
       - POSTGRES_USER=${DB_USER:-tauuser}
       - POSTGRES_PASSWORD=${DB_PASSWORD:?DB_PASSWORD is required}
@@ -51,9 +57,11 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    security_opt:
+      - no-new-privileges:true
 
   ollama:
-    image: ollama/ollama:latest
+    image: ollama/ollama:0.32.3@sha256:ec24bcaa2a810eb74171ce7c517813ef4821ed678988845e8d76cf62467036d4
     ports:
       # Loopback only: the Ollama API is unauthenticated, and the app reaches
       # it over the internal network as http://ollama:11434 regardless.
@@ -64,6 +72,8 @@ services:
     entrypoint: ["/bin/sh", "/init-ollama.sh"]
     environment:
       - OLLAMA_MODEL=llama3.2:3b
+    security_opt:
+      - no-new-privileges:true
 
 volumes:
   postgres_data:
