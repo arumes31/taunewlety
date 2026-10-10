@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.26-alpine AS builder
+FROM golang:1.26.9-alpine AS builder
 
 WORKDIR /app
 
@@ -23,7 +23,7 @@ WORKDIR /app
 COPY --from=builder /app/main .
 COPY --from=builder /app/web ./web
 
-RUN apk add --no-cache wget
+RUN apk upgrade --no-cache && apk add --no-cache wget
 
 # For production deployments, use DB_TYPE=postgres instead of SQLite.
 VOLUME /data
