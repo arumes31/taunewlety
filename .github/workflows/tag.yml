@@ -5,14 +5,22 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   tag:
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          persist-credentials: false
           fetch-depth: 0
 
       - name: Fix safe.directory
@@ -20,7 +28,7 @@ jobs:
 
       - name: Bump version and push tag
         id: tag_version
-        uses: anothrNick/github-tag-action@1.64.0
+        uses: anothrNick/github-tag-action@c360518fb8131e99795f8208f8a6105ceca55ec2 # 1.64.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           WITH_V: true
