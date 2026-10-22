@@ -3,12 +3,10 @@ package http
 import (
 	"log"
 	"net/http"
-	"strconv"
 	"taunewlety/internal/domain/models"
 	"taunewlety/internal/platform/database"
 	"taunewlety/internal/service/newsletter"
 	"taunewlety/pkg"
-	"time"
 
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
@@ -18,17 +16,29 @@ import (
 // #nosec G107
 var sendUnsubscribeEmail = sendUnsubscribeConfirmationEmail
 
+// unsubscribeDoneMessage is returned for every authorized unsubscribe
+// request, whether or not the address was on the list, so the response
+// never reveals list membership.
+const unsubscribeDoneMessage = "If this address was subscribed, it has been unsubscribed. A confirmation email will be sent."
+
+// unsubscribeInvalidLinkMessage is shown for links without a valid token,
+// including links from newsletters sent before tokens were introduced.
+const unsubscribeInvalidLinkMessage = "This unsubscribe link is invalid. Please use the link from your most recent newsletter, or contact the server administrator."
+
+// UnsubscribeGet renders the confirmation page for a signed unsubscribe link.
+// The removal itself happens on POST so that mail scanners prefetching the
+// link cannot unsubscribe anyone.
 func (h *Handler) UnsubscribeGet(c *gin.Context) {
 	email := c.Query("email")
-	captcha, err := pkg.GenerateCaptcha()
-	if err != nil {
-		c.String(http.StatusInternalServerError, "Failed to generate captcha: %v", err)
+	token := c.Query("token")
+	if !pkg.VerifyUnsubscribeToken(pkg.UnsubscribeSecret(), email, token) {
+		c.HTML(http.StatusBadRequest, "unsubscribe.html", gin.H{
+			"error": unsubscribeInvalidLinkMessage,
+		})
 		return
 	}
 
 	session := sessions.Default(c)
-	session.Set("captcha_answer", captcha.Answer)
-	session.Set("unsubscribe_email", email)
 
 	// Use the CSRF token from the middleware (already stored in session
 	// and set in context by CSRFProtection). Fall back to generating one
@@ -36,6 +46,7 @@ func (h *Handler) UnsubscribeGet(c *gin.Context) {
 	csrfToken, _ := c.Get("csrf_token")
 	csrfStr, ok := csrfToken.(string)
 	if !ok || csrfStr == "" {
+		var err error
 		csrfStr, err = generateCSRFToken()
 		if err != nil {
 			c.String(http.StatusInternalServerError, "Failed to generate CSRF token: %v", err)
@@ -51,11 +62,14 @@ func (h *Handler) UnsubscribeGet(c *gin.Context) {
 
 	c.HTML(http.StatusOK, "unsubscribe.html", gin.H{
 		"email":      email,
-		"question":   captcha.Question,
+		"token":      token,
 		"csrf_token": csrfStr,
 	})
 }
 
+// UnsubscribePost removes the subscriber named in a signed unsubscribe link.
+// The HMAC token proves the request comes from the link mailed to that
+// address, so no captcha or session state is needed to authorize it.
 func (h *Handler) UnsubscribePost(c *gin.Context) {
 	session := sessions.Default(c)
 
@@ -74,77 +88,14 @@ func (h *Handler) UnsubscribePost(c *gin.Context) {
 		return
 	}
 
-	email, _ := session.Get("unsubscribe_email").(string)
-	if email == "" {
-		c.String(http.StatusBadRequest, "Email not found in session")
+	email := c.PostForm("email")
+	token := c.PostForm("token")
+	if !pkg.VerifyUnsubscribeToken(pkg.UnsubscribeSecret(), email, token) {
+		c.String(http.StatusForbidden, unsubscribeInvalidLinkMessage)
 		return
 	}
 
-	// Verify that the form-submitted email matches the session email
-	formEmail := c.PostForm("email")
-	if formEmail != "" && formEmail != email {
-		c.String(http.StatusForbidden, "Email mismatch")
-		return
-	}
-
-	// Rate limit: reject if last unsubscribe attempt was within 5 seconds
-	lastAttemptVal := session.Get("last_unsubscribe_attempt")
-	if lastAttemptVal != nil {
-		switch v := lastAttemptVal.(type) {
-		case int64:
-			if time.Now().Unix()-v < 5 {
-				c.String(http.StatusTooManyRequests, "Too many attempts. Please wait a few seconds and try again.")
-				return
-			}
-		case float64:
-			if time.Now().Unix()-int64(v) < 5 {
-				c.String(http.StatusTooManyRequests, "Too many attempts. Please wait a few seconds and try again.")
-				return
-			}
-		}
-	}
-
-	answerStr := c.PostForm("answer")
-	answer, err := strconv.Atoi(answerStr)
-	if err != nil {
-		c.String(http.StatusBadRequest, "Invalid answer format")
-		return
-	}
-
-	correctAnswerVal := session.Get("captcha_answer")
-	if correctAnswerVal == nil {
-		c.String(http.StatusUnauthorized, "Captcha answer not found in session")
-		return
-	}
-
-	var correctAnswerInt int
-	matched := false
-	switch v := correctAnswerVal.(type) {
-	case int:
-		correctAnswerInt = v
-		matched = true
-	case float64:
-		correctAnswerInt = int(v)
-		matched = true
-	case string:
-		if parsed, err := strconv.Atoi(v); err == nil {
-			correctAnswerInt = parsed
-			matched = true
-		}
-	}
-
-	if !matched || answer != correctAnswerInt {
-		c.String(http.StatusUnauthorized, "Invalid captcha answer. Please try again.")
-		return
-	}
-
-	// Store rate limit timestamp
-	session.Set("last_unsubscribe_attempt", time.Now().Unix())
-
-	// Remove captcha and email from session
-	session.Delete("captcha_answer")
 	session.Delete("csrf_token")
-	session.Delete("unsubscribe_email")
 	if err := session.Save(); err != nil {
 		c.String(http.StatusInternalServerError, "Failed to save session")
 		return
@@ -155,18 +106,18 @@ func (h *Handler) UnsubscribePost(c *gin.Context) {
 	// cause a UNIQUE constraint failure on re-subscription).
 	res := h.DB.Unscoped().Where("email = ?", email).Delete(&models.Subscriber{})
 	if res.Error != nil {
-		c.String(http.StatusInternalServerError, "Failed to unsubscribe: "+res.Error.Error())
-		return
-	}
-	if res.RowsAffected == 0 {
-		c.String(http.StatusNotFound, "Subscriber not found.")
+		log.Printf("Unsubscribe: failed to delete subscriber: %v", res.Error)
+		c.String(http.StatusInternalServerError, "Failed to unsubscribe. Please try again later.")
 		return
 	}
 
-	// Send confirmation email in the background (best-effort, non-blocking)
-	go sendUnsubscribeEmail(email)
+	// Only actual removals trigger a confirmation email; the response is
+	// the same either way.
+	if res.RowsAffected > 0 {
+		go sendUnsubscribeEmail(email)
+	}
 
-	c.String(http.StatusOK, "You have been successfully unsubscribed. A confirmation email has been sent to %s.", email)
+	c.String(http.StatusOK, unsubscribeDoneMessage)
 }
 
 // sendUnsubscribeConfirmationEmail sends a best-effort notification to the

@@ -14,6 +14,7 @@ import (
 	"net/smtp"
 	"net/url"
 	"strings"
+	"taunewlety/pkg"
 	"time"
 )
 
@@ -28,7 +29,10 @@ func (s *NewsletterService) SendEmail(to string, subject string, body string) er
 		return fmt.Errorf("invalid recipient email: %w", err)
 	}
 
-	unsubURL := fmt.Sprintf("%s/unsubscribe?email=%s", s.Config.AppBaseURL, url.QueryEscape(toSanitized))
+	// The link carries an HMAC token bound to the address, so only someone
+	// holding the email can unsubscribe it.
+	token := pkg.UnsubscribeToken(pkg.UnsubscribeSecret(), toSanitized)
+	unsubURL := fmt.Sprintf("%s/unsubscribe?email=%s&token=%s", s.Config.AppBaseURL, url.QueryEscape(toSanitized), url.QueryEscape(token))
 	body = strings.ReplaceAll(body, "{{.UnsubscribeURL}}", unsubURL)
 
 	auth := smtp.PlainAuth("", s.Config.SMTPUser, s.Config.SMTPPass, s.Config.SMTPHost)
