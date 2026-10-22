@@ -53,7 +53,7 @@ func TestNewsletterService_GenerateNewsletter(t *testing.T) {
 			},
 			wantErr:      false,
 			wantSubject:  "Plex Subject",
-			wantBody:     "Plex Body",
+			wantBody:     "Plex Body" + unsubscribeFooter,
 			checkBlacklist: true,
 		},
 		{
