@@ -51,11 +51,8 @@
             box-sizing: border-box;
         }
 
-        .captcha-question {
-            font-size: 1.2rem;
-            font-weight: bold;
-            margin-bottom: 1rem;
-            color: #007bff;
+        .error {
+            color: #dc3545;
         }
 
         button {
@@ -79,19 +76,19 @@
 <body>
     <div class="card">
         <h1>Unsubscribe</h1>
+        {{if .error}}
+        <p class="error">{{.error}}</p>
+        {{else}}
         <p>Please confirm you want to unsubscribe <strong>{{.email}}</strong>.</p>
         <form action="/unsubscribe" method="POST">
             <input type="hidden" name="csrf_token" value="{{.csrf_token}}">
             <input type="hidden" name="email" value="{{.email}}">
-            <div class="form-group">
-                <label>Security Check:</label>
-                <div class="captcha-question">{{.question}} = ?</div>
-                <input type="number" name="answer" placeholder="Your answer" required autofocus>
-            </div>
+            <input type="hidden" name="token" value="{{.token}}">
             <button type="submit">Confirm Unsubscribe</button>
             <p style="margin-top:0.75rem;font-size:0.85rem;color:#888;">A confirmation email will be sent to your
                 address after unsubscribing.</p>
         </form>
+        {{end}}
     </div>
 </body>
 

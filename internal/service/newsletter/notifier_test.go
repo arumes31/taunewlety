@@ -7,6 +7,7 @@ import (
 	"net/smtp"
 	"strings"
 	"taunewlety/internal/domain/models"
+	"taunewlety/pkg"
 	"testing"
 )
 
@@ -14,6 +15,8 @@ func TestNewsletterService_SendEmail(t *testing.T) {
 	// Save the original smtpSendMail and restore it after tests
 	originalSmtpSendMail := smtpSendMail
 	defer func() { smtpSendMail = originalSmtpSendMail }()
+
+	t.Setenv("UNSUBSCRIBE_SECRET", "notifier-test-secret")
 
 	tests := []struct {
 		name         string
@@ -55,8 +58,10 @@ func TestNewsletterService_SendEmail(t *testing.T) {
 				if !strings.Contains(msgStr, "Subject: Test Subject") {
 					t.Errorf("message should contain subject")
 				}
-				if !strings.Contains(msgStr, "http://localhost:8080/unsubscribe?email=recipient%40example.com") {
-					t.Errorf("message should contain unsubscribe URL")
+				wantURL := "http://localhost:8080/unsubscribe?email=recipient%40example.com&token=" +
+					pkg.UnsubscribeToken("notifier-test-secret", "recipient@example.com")
+				if !strings.Contains(msgStr, wantURL) {
+					t.Errorf("message should contain signed unsubscribe URL %q", wantURL)
 				}
 				return nil
 			},
