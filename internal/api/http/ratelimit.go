@@ -106,3 +106,60 @@ func LoginRateLimit() gin.HandlerFunc {
 		c.Next()
 	}
 }
+
+// accountBackoff slows down password guessing against the single admin
+// account regardless of client IP, so rotating source addresses does not
+// bypass the per-IP limit. Instead of a lockout it imposes a short,
+// exponentially growing delay, which keeps an attacker from locking the
+// admin out for long.
+type accountBackoff struct {
+	mu        sync.Mutex
+	failures  int
+	lastFail  time.Time
+	until     time.Time
+	threshold int
+	maxDelay  time.Duration
+	window    time.Duration
+}
+
+var loginBackoff = &accountBackoff{
+	threshold: 5,
+	maxDelay:  30 * time.Second,
+	window:    15 * time.Minute,
+}
+
+// allowed reports whether a login attempt may proceed now.
+func (b *accountBackoff) allowed() bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return !time.Now().Before(b.until)
+}
+
+// recordFailure counts a failed login. Past the threshold, each further
+// failure doubles the wait before the next attempt, up to maxDelay.
+func (b *accountBackoff) recordFailure() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	now := time.Now()
+	if now.Sub(b.lastFail) > b.window {
+		b.failures = 0
+	}
+	b.failures++
+	b.lastFail = now
+
+	if over := b.failures - b.threshold; over > 0 {
+		delay := b.maxDelay
+		if over < 16 {
+			delay = min(time.Second<<(over-1), b.maxDelay)
+		}
+		b.until = now.Add(delay)
+	}
+}
+
+func (b *accountBackoff) reset() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.failures = 0
+	b.until = time.Time{}
+}
