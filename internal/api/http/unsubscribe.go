@@ -104,17 +104,22 @@ func (h *Handler) UnsubscribePost(c *gin.Context) {
 	// Hard-delete so the unique email index is freed and the user can
 	// re-subscribe later (a soft delete would leave the row in place and
 	// cause a UNIQUE constraint failure on re-subscription).
-	res := h.DB.Unscoped().Where("email = ?", email).Delete(&models.Subscriber{})
-	if res.Error != nil {
-		log.Printf("Unsubscribe: failed to delete subscriber: %v", res.Error)
+	var subscriber models.Subscriber
+	err := h.DB.Unscoped().Where("email = ?", email).Limit(1).Find(&subscriber).Error
+	if err == nil && subscriber.ID != 0 {
+		err = h.DB.Unscoped().Delete(&subscriber).Error
+	}
+	if err != nil {
+		log.Printf("Unsubscribe: failed to delete subscriber: %v", err)
 		c.String(http.StatusInternalServerError, "Failed to unsubscribe. Please try again later.")
 		return
 	}
 
-	// Only actual removals trigger a confirmation email; the response is
-	// the same either way.
-	if res.RowsAffected > 0 {
-		go sendUnsubscribeEmail(email)
+	// Only actual removals trigger a confirmation email, addressed to the
+	// stored address rather than the request input; the response is the
+	// same either way.
+	if subscriber.ID != 0 {
+		go sendUnsubscribeEmail(subscriber.Email)
 	}
 
 	c.String(http.StatusOK, unsubscribeDoneMessage)
