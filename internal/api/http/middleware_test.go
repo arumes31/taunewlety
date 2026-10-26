@@ -16,6 +16,8 @@ func TestAuthRequired_Middleware(t *testing.T) {
 	tests := []struct {
 		name           string
 		setUser        bool
+		revoke         bool
+		userOnly       bool // pre-registry cookie: "user" set, no session ID
 		expectedStatus int
 		expectedBody   string
 		expectedLoc    string
@@ -31,6 +33,20 @@ func TestAuthRequired_Middleware(t *testing.T) {
 			setUser:        true,
 			expectedStatus: http.StatusOK,
 			expectedBody:   "welcome",
+		},
+		{
+			name:           "Revoked session redirects to /login",
+			setUser:        true,
+			revoke:         true,
+			expectedStatus: http.StatusFound,
+			expectedLoc:    "/login",
+		},
+		{
+			name:           "User without registered session ID redirects",
+			setUser:        true,
+			userOnly:       true,
+			expectedStatus: http.StatusFound,
+			expectedLoc:    "/login",
 		},
 	}
 
@@ -52,7 +68,14 @@ func TestAuthRequired_Middleware(t *testing.T) {
 			if tt.setUser {
 				r.GET("/set-session", func(c *gin.Context) {
 					session := sessions.Default(c)
-					session.Set("user", "admin")
+					if tt.userOnly {
+						session.Set("user", "admin")
+					} else if err := startAdminSession(session, "admin"); err != nil {
+						t.Fatalf("startAdminSession: %v", err)
+					}
+					if tt.revoke {
+						endAdminSession(session)
+					}
 					_ = session.Save()
 					c.String(http.StatusOK, "session set")
 				})

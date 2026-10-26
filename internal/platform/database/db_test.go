@@ -448,3 +448,50 @@ func TestEscapeDSNValue(t *testing.T) {
 		})
 	}
 }
+
+func TestConfigSecretsEncryptedAtRest(t *testing.T) {
+	t.Setenv("CONFIG_ENCRYPTION_KEY", "test-key")
+
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	if err := db.AutoMigrate(&models.Config{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+
+	// A row written before encryption was enabled stays readable.
+	if err := db.Exec("INSERT INTO configs (smtp_pass, created_at, updated_at) VALUES (?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)", "legacy-pass").Error; err != nil {
+		t.Fatalf("insert legacy row: %v", err)
+	}
+	var cfg models.Config
+	if err := db.First(&cfg).Error; err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if cfg.SMTPPass != "legacy-pass" {
+		t.Errorf("legacy plaintext not readable, got %q", cfg.SMTPPass)
+	}
+
+	cfg.SMTPPass = "new-pass"
+	cfg.TelegramBotTok = "bot-token"
+	if err := db.Save(&cfg).Error; err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	var raw struct {
+		SMTPPass       string
+		TelegramBotTok string
+	}
+	db.Raw("SELECT smtp_pass, telegram_bot_tok FROM configs WHERE id = ?", cfg.ID).Scan(&raw)
+	if !strings.HasPrefix(raw.SMTPPass, "enc:v1:") || !strings.HasPrefix(raw.TelegramBotTok, "enc:v1:") {
+		t.Errorf("secrets stored in plaintext: %+v", raw)
+	}
+
+	var reloaded models.Config
+	if err := db.First(&reloaded, cfg.ID).Error; err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	if reloaded.SMTPPass != "new-pass" || reloaded.TelegramBotTok != "bot-token" {
+		t.Errorf("decrypted values mismatch: %q %q", reloaded.SMTPPass, reloaded.TelegramBotTok)
+	}
+}
