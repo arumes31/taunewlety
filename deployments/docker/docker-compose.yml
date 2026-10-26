@@ -29,6 +29,18 @@ services:
       # certificate mounts below.
       - TLS_CERT=${TLS_CERT:-}
       - TLS_KEY=${TLS_KEY:-}
+      # Set to the reverse proxy's address(es) (comma-separated IPs/CIDRs) so
+      # the login rate limit sees real client IPs, e.g. 172.16.0.0/12.
+      - TRUSTED_PROXIES=${TRUSTED_PROXIES:-}
+      # The session cookie is Secure by default; set COOKIE_SECURE=false only
+      # for local testing over plain HTTP.
+      - COOKIE_SECURE=${COOKIE_SECURE:-true}
+      - SESSION_MAX_AGE=${SESSION_MAX_AGE:-12h}
+      # Optional: separate key for unsubscribe links (defaults to SESSION_SECRET).
+      - UNSUBSCRIBE_SECRET=${UNSUBSCRIBE_SECRET:-}
+      # Optional: encrypts stored integration secrets (SMTP password, API
+      # tokens). Keep it safe: losing it means re-entering those secrets.
+      - CONFIG_ENCRYPTION_KEY=${CONFIG_ENCRYPTION_KEY:-}
     # volumes:
     #   - ./certs/cert.pem:/certs/cert.pem:ro
     #   - ./certs/key.pem:/certs/key.pem:ro
@@ -39,7 +51,7 @@ services:
         condition: service_started
 
   db:
-    image: postgres:16-alpine
+    image: postgres:16.15-alpine3.24@sha256:deb28ee471183cb0c303113dac9b2433c51eeeeb678def7af9a9ec5820367815
     environment:
       - POSTGRES_USER=${DB_USER:-tauuser}
       - POSTGRES_PASSWORD=${DB_PASSWORD:?DB_PASSWORD is required}
@@ -53,7 +65,7 @@ services:
       retries: 5
 
   ollama:
-    image: ollama/ollama:latest
+    image: ollama/ollama:0.40.8@sha256:2b8eecdb85aa6ea67c381c8ecffec04b2658496cf2821a8f88b0485bdff198e8
     ports:
       # Loopback only: the Ollama API is unauthenticated, and the app reaches
       # it over the internal network as http://ollama:11434 regardless.

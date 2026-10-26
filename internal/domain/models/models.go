@@ -5,15 +5,15 @@ import "gorm.io/gorm"
 type Config struct {
 	gorm.Model
 	TautulliURL    string `json:"tautulli_url"`
-	TautulliAPIKey string `json:"tautulli_api_key"`
+	TautulliAPIKey string `json:"tautulli_api_key" gorm:"serializer:encrypted"`
 	PlexURL        string `json:"plex_url"`
-	PlexToken      string `json:"plex_token"`
+	PlexToken      string `json:"plex_token" gorm:"serializer:encrypted"`
 	OllamaURL      string `json:"ollama_url"`
 	OllamaModel    string `json:"ollama_model"`
 	SMTPHost       string `json:"smtp_host"`
 	SMTPPort       int    `json:"smtp_port"`
 	SMTPUser       string `json:"smtp_user"`
-	SMTPPass       string `json:"smtp_pass"`
+	SMTPPass       string `json:"smtp_pass" gorm:"serializer:encrypted"`
 	SMTPSender     string `json:"smtp_sender"`
 	SMTPEncryption string `json:"smtp_encryption"` // "starttls" (default), "tls", "none"
 	NewsletterTime string `json:"newsletter_time"`
@@ -21,7 +21,7 @@ type Config struct {
 	Language       string `json:"language"`
 	AppBaseURL     string `json:"app_base_url"` // For unsubscribe links
 	DiscordWebhook string `json:"discord_webhook"`
-	TelegramBotTok string `json:"telegram_bot_token"`
+	TelegramBotTok string `json:"telegram_bot_token" gorm:"serializer:encrypted"`
 	TelegramChatID string `json:"telegram_chat_id"`
 }
 

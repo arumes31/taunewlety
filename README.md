@@ -61,7 +61,8 @@ graph TD
 - **Newsletter Preview**: See exactly what your users will receive before sending.
 
 ### 🛡️ Security & Privacy
-- **Secure Unsubscribe**: Confirmation flow protected by math-based **Captcha**.
+- **Secure Unsubscribe**: Every newsletter carries a per-subscriber, HMAC-signed unsubscribe link; unsigned or forged links are rejected and responses never reveal whether an address is subscribed.
+- **Sanitized AI Output**: LLM-generated HTML passes an allowlist sanitizer before it is mailed, and the unsubscribe footer is added by the application, not the model.
 - **Local AI & Data Privacy**: No data leaves your server; subscriber emails are strictly sanitized and omitted from system logs.
 - **Cryptographically Secure Randomization**: Uses `crypto/rand` for unguessable "Surprise Me" recommendations.
 - **Hardened Server**: Built-in Slowloris protection, secure session management, and audited against Gosec & Govulncheck.
@@ -86,6 +87,13 @@ Set the following mandatory variables:
 - `APP_PASS`: Your dashboard password.
 - `SESSION_SECRET`: A long random string.
 - `DB_USER`, `DB_PASSWORD`, `DB_NAME`: Credentials for the PostgreSQL container.
+
+Optional security settings:
+- `TRUSTED_PROXIES`: Comma-separated IPs/CIDRs of your reverse proxy. Without it every client appears to come from the proxy's IP, so the per-IP login rate limit is shared by everyone.
+- `COOKIE_SECURE`: The session cookie is `Secure` by default. Set `false` only for local testing over plain HTTP.
+- `SESSION_MAX_AGE`: Admin session lifetime as a Go duration (default `12h`). Sessions are also tracked server-side, so logout revokes them; restarting the app logs everyone out.
+- `UNSUBSCRIBE_SECRET`: Key for signing unsubscribe links (defaults to `SESSION_SECRET`). Set it if you want to rotate `SESSION_SECRET` without invalidating links in newsletters already sent.
+- `CONFIG_ENCRYPTION_KEY`: When set, the Tautulli API key, Plex token, SMTP password and Telegram bot token are encrypted (AES-256-GCM) in the database. Existing plaintext values are encrypted the next time settings are saved. If the key is lost, re-enter those secrets.
 
 ### 3. Deploy with Docker Compose
 Run the stack in the background:
@@ -169,6 +177,8 @@ taunewlety.example.com {
 
 The Compose file publishes the app on `127.0.0.1:8080` rather than `0.0.0.0:8080`, so the only route in from the network is through your proxy.
 
+Set `TRUSTED_PROXIES` to the proxy's address so the app reads the real client IP from `X-Forwarded-For` — `127.0.0.1` for a host-installed proxy reaching the published port is not enough on its own, because Docker forwards the connection from the bridge gateway; use the Compose network range (for example `172.16.0.0/12`) or the proxy container's IP.
+
 ### Option B: Direct TLS
 
 If you prefer to skip the reverse proxy, TauNewlety can serve TLS directly. Set both environment variables:
@@ -188,6 +198,8 @@ TLS_KEY=/certs/key.pem
 ```
 
 The container healthcheck follows the same switch, probing `https://localhost:$PORT/health` whenever both variables are set.
+
+The container runs as the unprivileged user UID `10001`, so mounted certificate files must be readable by that UID. If you use SQLite with a `/data` volume created by an older image, run `chown -R 10001:10001` on it once.
 
 > **Important**: Never expose the application over plain HTTP in production. Always use HTTPS/TLS to protect session cookies and credentials.
 

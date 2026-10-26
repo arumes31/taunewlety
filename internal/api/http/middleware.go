@@ -9,8 +9,7 @@ import (
 func AuthRequired() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		session := sessions.Default(c)
-		user := session.Get("user")
-		if user == nil {
+		if !sessionIsActive(session) {
 			c.Redirect(http.StatusFound, "/login")
 			c.Abort()
 			return

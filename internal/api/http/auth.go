@@ -24,8 +24,9 @@ func (h *Handler) LoginGet(c *gin.Context) {
 func (h *Handler) LoginPost(c *gin.Context) {
 	ip := c.ClientIP()
 
-	// Rate limit check: block if too many failed attempts from this IP
-	if !loginLimiter.check(ip) {
+	// Rate limit check: block if too many failed attempts from this IP, or
+	// while the account-wide backoff (independent of IP) is in effect.
+	if !loginLimiter.check(ip) || !loginBackoff.allowed() {
 		token, err := generateAndStoreCSRF(sessions.Default(c))
 		if err != nil {
 			c.String(http.StatusInternalServerError, "Failed to generate CSRF token")
@@ -82,7 +83,11 @@ func (h *Handler) LoginPost(c *gin.Context) {
 
 	if userMatch && passMatch {
 		loginLimiter.reset(ip)
-		session.Set("user", user)
+		loginBackoff.reset()
+		if err := startAdminSession(session, user); err != nil {
+			c.String(http.StatusInternalServerError, "Failed to start session")
+			return
+		}
 		if err := session.Save(); err != nil {
 			c.String(http.StatusInternalServerError, "Failed to save session")
 			return
@@ -90,6 +95,7 @@ func (h *Handler) LoginPost(c *gin.Context) {
 		c.Redirect(http.StatusFound, "/")
 	} else {
 		loginLimiter.recordFailure(ip)
+		loginBackoff.recordFailure()
 		token, err := generateAndStoreCSRF(session)
 		if err != nil {
 			c.String(http.StatusInternalServerError, "Failed to generate CSRF token")
@@ -105,6 +111,7 @@ func (h *Handler) LoginPost(c *gin.Context) {
 // LogoutGet clears the session and redirects to the login page.
 func (h *Handler) LogoutGet(c *gin.Context) {
 	session := sessions.Default(c)
+	endAdminSession(session)
 	session.Clear()
 	session.Options(sessions.Options{MaxAge: -1})
 	if err := session.Save(); err != nil {

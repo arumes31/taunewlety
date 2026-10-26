@@ -85,9 +85,16 @@ func templateFuncMap() template.FuncMap {
 func SetupRouter(db *gorm.DB, logger *zap.Logger) (*gin.Engine, error) {
 	r := gin.New()
 
-	// Best practice: Set trusted proxies to nil to disable by default.
-	// This prevents spoofing of client IP addresses.
-	_ = r.SetTrustedProxies(nil)
+	// No proxy is trusted by default, which prevents spoofing of client IP
+	// addresses. Behind a reverse proxy, list it in TRUSTED_PROXIES so the
+	// login rate limit sees real client IPs instead of the proxy's.
+	proxies, err := trustedProxies()
+	if err != nil {
+		return nil, err
+	}
+	if err := r.SetTrustedProxies(proxies); err != nil {
+		return nil, fmt.Errorf("invalid TRUSTED_PROXIES: %w", err)
+	}
 
 	// Replace gin.Default() middleware with zap-integrated logging,
 	// gin recovery, and security headers.
@@ -99,14 +106,23 @@ func SetupRouter(db *gorm.DB, logger *zap.Logger) (*gin.Engine, error) {
 	if sessionSecret == "" {
 		return nil, fmt.Errorf("SESSION_SECRET environment variable is required but was not set")
 	}
-	store := cookie.NewStore([]byte(sessionSecret))
+	// The cookie is signed and encrypted, so its contents cannot be read
+	// or altered by the client.
+	store := cookie.NewStore([]byte(sessionSecret), sessionEncryptionKey(sessionSecret))
 
+	maxAge := int(sessionMaxAge().Seconds())
 	store.Options(sessions.Options{
 		Path:     "/",
+		MaxAge:   maxAge,
 		HttpOnly: true,
-		Secure:   os.Getenv("ENV") == "production" || os.Getenv("COOKIE_SECURE") == "true",
+		Secure:   cookieSecure(),
 		SameSite: http.SameSiteStrictMode,
 	})
+	// Also make the signed timestamp expire, so an old cookie is rejected
+	// server-side even if a client ignores the cookie's Max-Age.
+	if s, ok := store.(interface{ MaxAge(int) }); ok {
+		s.MaxAge(maxAge)
+	}
 
 	r.Use(sessions.Sessions("mysession", store))
 
