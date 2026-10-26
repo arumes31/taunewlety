@@ -1,7 +1,6 @@
 package http
 
 import (
-	"crypto/rand"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -11,7 +10,9 @@ import (
 	"strings"
 	"taunewlety/internal/domain/models"
 	"taunewlety/internal/platform/database"
+	"taunewlety/pkg"
 	"testing"
+	"time"
 
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-contrib/sessions/cookie"
@@ -20,17 +21,50 @@ import (
 	"gorm.io/gorm"
 )
 
-type failReader struct{}
+const unsubTestSecret = "test-secret-123"
 
-func (failReader) Read(p []byte) (n int, err error) {
-	return 0, fmt.Errorf("simulated random read error")
+// unsubscribeLink returns the signed GET path for email.
+func unsubscribeLink(email string) string {
+	return "/unsubscribe?email=" + url.QueryEscape(email) +
+		"&token=" + url.QueryEscape(pkg.UnsubscribeToken(unsubTestSecret, email))
+}
+
+var reCSRF = regexp.MustCompile(`name="csrf_token" value="([^"]+)"`)
+
+// openUnsubscribeForm loads the confirmation page and returns its session
+// cookie and CSRF token.
+func openUnsubscribeForm(t *testing.T, r http.Handler, email string) (string, string) {
+	t.Helper()
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodGet, unsubscribeLink(email), nil)
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status 200 for signed link, got: %d", w.Code)
+	}
+	m := reCSRF.FindStringSubmatch(w.Body.String())
+	if len(m) < 2 {
+		t.Fatal("could not find CSRF token in unsubscribe form")
+	}
+	return w.Header().Get("Set-Cookie"), m[1]
+}
+
+func postUnsubscribe(r http.Handler, cookieVal string, form url.Values) *httptest.ResponseRecorder {
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPost, "/unsubscribe", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	if cookieVal != "" {
+		req.Header.Set("Cookie", cookieVal)
+	}
+	r.ServeHTTP(w, req)
+	return w
 }
 
 func TestUnsubscribeHandlers(t *testing.T) {
 	// Override sendUnsubscribeEmail to prevent goroutine from accessing
-	// a stale DB when tests run in sequence.
+	// a stale DB when tests run in sequence, and to count confirmations.
+	sent := make(chan string, 4)
 	originalSendEmail := sendUnsubscribeEmail
-	sendUnsubscribeEmail = func(email string) {}
+	sendUnsubscribeEmail = func(email string) { sent <- email }
 	defer func() { sendUnsubscribeEmail = originalSendEmail }()
 
 	_ = os.Setenv("DB_PATH", ":memory:")
@@ -40,10 +74,9 @@ func TestUnsubscribeHandlers(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to init DB: %v", err)
 	}
-	_ = os.Setenv("SESSION_SECRET", "test-secret-123")
-	defer func() { _ = os.Unsetenv("SESSION_SECRET") }()
+	t.Setenv("SESSION_SECRET", unsubTestSecret)
+	t.Setenv("UNSUBSCRIBE_SECRET", "")
 
-	// Pre-create a subscriber
 	database.GetDB().Create(&models.Subscriber{Email: "test@example.com"})
 
 	gin.SetMode(gin.TestMode)
@@ -52,208 +85,107 @@ func TestUnsubscribeHandlers(t *testing.T) {
 		t.Fatalf("SetupRouter failed: %v", routerErr)
 	}
 
-	// 1. GET /unsubscribe
-	wGet := httptest.NewRecorder()
-	reqGet, _ := http.NewRequest(http.MethodGet, "/unsubscribe?email=test@example.com", nil)
-	r.ServeHTTP(wGet, reqGet)
+	t.Run("GET without token is rejected", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest(http.MethodGet, "/unsubscribe?email=test@example.com", nil)
+		r.ServeHTTP(w, req)
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("expected 400 for unsigned link, got: %d", w.Code)
+		}
+		if strings.Contains(w.Body.String(), `name="csrf_token"`) {
+			t.Error("unsigned link must not render the confirmation form")
+		}
+	})
 
-	if wGet.Code != http.StatusOK {
-		t.Fatalf("expected status 200, got: %d", wGet.Code)
+	t.Run("GET with forged token is rejected", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		forged := "/unsubscribe?email=test@example.com&token=" + pkg.UnsubscribeToken("wrong", "test@example.com")
+		req, _ := http.NewRequest(http.MethodGet, forged, nil)
+		r.ServeHTTP(w, req)
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("expected 400 for forged token, got: %d", w.Code)
+		}
+	})
+
+	cookieVal, csrfToken := openUnsubscribeForm(t, r, "test@example.com")
+
+	t.Run("POST with bad CSRF is rejected", func(t *testing.T) {
+		form := url.Values{}
+		form.Set("csrf_token", "bad-csrf")
+		form.Set("email", "test@example.com")
+		form.Set("token", pkg.UnsubscribeToken(unsubTestSecret, "test@example.com"))
+		if w := postUnsubscribe(r, cookieVal, form); w.Code != http.StatusForbidden {
+			t.Errorf("expected 403 on bad CSRF, got: %d", w.Code)
+		}
+	})
+
+	t.Run("POST with token for another address is rejected", func(t *testing.T) {
+		form := url.Values{}
+		form.Set("csrf_token", csrfToken)
+		form.Set("email", "test@example.com")
+		form.Set("token", pkg.UnsubscribeToken(unsubTestSecret, "attacker@example.com"))
+		if w := postUnsubscribe(r, cookieVal, form); w.Code != http.StatusForbidden {
+			t.Errorf("expected 403 on mismatched token, got: %d", w.Code)
+		}
+	})
+
+	t.Run("POST with valid token unsubscribes", func(t *testing.T) {
+		form := url.Values{}
+		form.Set("csrf_token", csrfToken)
+		form.Set("email", "test@example.com")
+		form.Set("token", pkg.UnsubscribeToken(unsubTestSecret, "test@example.com"))
+		w := postUnsubscribe(r, cookieVal, form)
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected 200, got: %d, body: %s", w.Code, w.Body.String())
+		}
+		if w.Body.String() != unsubscribeDoneMessage {
+			t.Errorf("unexpected body: %s", w.Body.String())
+		}
+
+		var count int64
+		database.GetDB().Model(&models.Subscriber{}).Where("email = ?", "test@example.com").Count(&count)
+		if count != 0 {
+			t.Error("expected subscriber to be deleted from DB")
+		}
+	})
+
+	t.Run("unknown address gets the same response", func(t *testing.T) {
+		cookie2, csrf2 := openUnsubscribeForm(t, r, "notfound@example.com")
+		form := url.Values{}
+		form.Set("csrf_token", csrf2)
+		form.Set("email", "notfound@example.com")
+		form.Set("token", pkg.UnsubscribeToken(unsubTestSecret, "notfound@example.com"))
+		w := postUnsubscribe(r, cookie2, form)
+		if w.Code != http.StatusOK || w.Body.String() != unsubscribeDoneMessage {
+			t.Errorf("expected generic 200 response, got: %d %s", w.Code, w.Body.String())
+		}
+	})
+
+	// Confirmations are sent from a goroutine; exactly one is expected,
+	// for the real removal only.
+	select {
+	case got := <-sent:
+		if got != "test@example.com" {
+			t.Errorf("confirmation sent to %q, want test@example.com", got)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("expected a confirmation email for the real removal")
 	}
-
-	bodyStr := wGet.Body.String()
-	cookieVal := wGet.Header().Get("Set-Cookie")
-
-	// Extract CSRF token
-	reCSRF := regexp.MustCompile(`name="csrf_token" value="([^"]+)"`)
-	matchesCSRF := reCSRF.FindStringSubmatch(bodyStr)
-	if len(matchesCSRF) < 2 {
-		t.Fatal("could not find CSRF token in unsubscribe form")
-	}
-	csrfToken := matchesCSRF[1]
-
-	// Extract Captcha question (e.g. "a + b = ?")
-	reCaptcha := regexp.MustCompile(`class="captcha-question">(\d+\s+(?:\+|\&\#43;)\s+\d+)\s+=\s+\?`)
-	matchesCaptcha := reCaptcha.FindStringSubmatch(bodyStr)
-	if len(matchesCaptcha) < 2 {
-		t.Fatalf("could not find captcha question in unsubscribe form, body:\n%s", bodyStr)
-	}
-	questionStr := strings.ReplaceAll(matchesCaptcha[1], "&#43;", "+")
-
-	// Calculate correct answer
-	var a, b int
-	_, _ = fmt.Sscanf(questionStr, "%d + %d", &a, &b)
-	correctAnswer := a + b
-
-	// 2. POST /unsubscribe - Bad CSRF
-	wPostBadCsrf := httptest.NewRecorder()
-	formBadCsrf := url.Values{}
-	formBadCsrf.Set("csrf_token", "bad-csrf")
-	formBadCsrf.Set("email", "test@example.com")
-	formBadCsrf.Set("answer", fmt.Sprintf("%d", correctAnswer))
-	reqPostBadCsrf, _ := http.NewRequest(http.MethodPost, "/unsubscribe", strings.NewReader(formBadCsrf.Encode()))
-	reqPostBadCsrf.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	reqPostBadCsrf.Header.Set("Cookie", cookieVal)
-	r.ServeHTTP(wPostBadCsrf, reqPostBadCsrf)
-
-	if wPostBadCsrf.Code != http.StatusForbidden {
-		t.Errorf("expected Forbidden (403) on bad CSRF, got: %d", wPostBadCsrf.Code)
-	}
-
-	// 3. POST /unsubscribe - Bad Captcha
-	wPostBadCaptcha := httptest.NewRecorder()
-	formBadCaptcha := url.Values{}
-	formBadCaptcha.Set("csrf_token", csrfToken)
-	formBadCaptcha.Set("email", "test@example.com")
-	formBadCaptcha.Set("answer", fmt.Sprintf("%d", correctAnswer+1))
-	reqPostBadCaptcha, _ := http.NewRequest(http.MethodPost, "/unsubscribe", strings.NewReader(formBadCaptcha.Encode()))
-	reqPostBadCaptcha.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	reqPostBadCaptcha.Header.Set("Cookie", cookieVal)
-	r.ServeHTTP(wPostBadCaptcha, reqPostBadCaptcha)
-
-	if wPostBadCreds := wPostBadCaptcha; wPostBadCreds.Code != http.StatusUnauthorized {
-		t.Errorf("expected Unauthorized (401) on bad captcha, got: %d", wPostBadCreds.Code)
-	}
-
-	// 4. POST /unsubscribe - Bad answer format (non-integer)
-	wPostBadFormat := httptest.NewRecorder()
-	formBadFormat := url.Values{}
-	formBadFormat.Set("csrf_token", csrfToken)
-	formBadFormat.Set("email", "test@example.com")
-	formBadFormat.Set("answer", "not-a-number")
-	reqPostBadFormat, _ := http.NewRequest(http.MethodPost, "/unsubscribe", strings.NewReader(formBadFormat.Encode()))
-	reqPostBadFormat.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	reqPostBadFormat.Header.Set("Cookie", cookieVal)
-	r.ServeHTTP(wPostBadFormat, reqPostBadFormat)
-
-	if wPostBadFormat.Code != http.StatusBadRequest {
-		t.Errorf("expected BadRequest (400) on invalid integer, got: %d", wPostBadFormat.Code)
-	}
-
-	// 5. POST /unsubscribe - Success
-	wPostSuccess := httptest.NewRecorder()
-	formSuccess := url.Values{}
-	formSuccess.Set("csrf_token", csrfToken)
-	formSuccess.Set("email", "test@example.com")
-	formSuccess.Set("answer", fmt.Sprintf("%d", correctAnswer))
-	reqPostSuccess, _ := http.NewRequest(http.MethodPost, "/unsubscribe", strings.NewReader(formSuccess.Encode()))
-	reqPostSuccess.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	reqPostSuccess.Header.Set("Cookie", cookieVal)
-	r.ServeHTTP(wPostSuccess, reqPostSuccess)
-
-	if wPostSuccess.Code != http.StatusOK {
-		t.Errorf("expected Status OK (200), got: %d", wPostSuccess.Code)
-	}
-	if !strings.Contains(wPostSuccess.Body.String(), "successfully unsubscribed") {
-		t.Errorf("expected success message, got: %s", wPostSuccess.Body.String())
-	}
-
-	// Verify deleted from DB
-	var count int64
-	database.GetDB().Model(&models.Subscriber{}).Where("email = ?", "test@example.com").Count(&count)
-	if count != 0 {
-		t.Error("expected subscriber to be deleted from DB")
-	}
-
-	// 6. POST /unsubscribe - Not found if email does not exist (replay/successive call with new captcha)
-	// We need a new session context to test this
-	wGet2 := httptest.NewRecorder()
-	reqGet2, _ := http.NewRequest(http.MethodGet, "/unsubscribe?email=notfound@example.com", nil)
-	r.ServeHTTP(wGet2, reqGet2)
-	cookieVal2 := wGet2.Header().Get("Set-Cookie")
-	bodyStr2 := wGet2.Body.String()
-
-	matchesCSRF2 := reCSRF.FindStringSubmatch(bodyStr2)
-	if len(matchesCSRF2) < 2 {
-		t.Fatal("could not find CSRF token in second unsubscribe form")
-	}
-	csrfToken2 := matchesCSRF2[1]
-	matchesCaptcha2 := reCaptcha.FindStringSubmatch(bodyStr2)
-	if len(matchesCaptcha2) < 2 {
-		t.Fatal("could not find captcha question in second unsubscribe form")
-	}
-	questionStr2 := strings.ReplaceAll(matchesCaptcha2[1], "&#43;", "+")
-	_, _ = fmt.Sscanf(questionStr2, "%d + %d", &a, &b)
-	correctAnswer2 := a + b
-
-	wPostNotFound := httptest.NewRecorder()
-	formNotFound := url.Values{}
-	formNotFound.Set("csrf_token", csrfToken2)
-	formNotFound.Set("email", "notfound@example.com")
-	formNotFound.Set("answer", fmt.Sprintf("%d", correctAnswer2))
-	reqPostNotFound, _ := http.NewRequest(http.MethodPost, "/unsubscribe", strings.NewReader(formNotFound.Encode()))
-	reqPostNotFound.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	reqPostNotFound.Header.Set("Cookie", cookieVal2)
-	r.ServeHTTP(wPostNotFound, reqPostNotFound)
-
-	if wPostNotFound.Code != http.StatusNotFound {
-		t.Errorf("expected NotFound (404) on non-existent email, got: %d", wPostNotFound.Code)
+	select {
+	case got := <-sent:
+		t.Errorf("unexpected confirmation email to %q", got)
+	case <-time.After(100 * time.Millisecond):
 	}
 }
 
-func TestUnsubscribeHandlers_CaptchaGenerationError(t *testing.T) {
-	// Test GenerateCaptcha error in unsubscribe route
-	oldReader := rand.Reader
-	rand.Reader = failReader{} // Force GenerateCaptcha to fail
-	defer func() { rand.Reader = oldReader }()
-
-	gin.SetMode(gin.TestMode)
-	db, _ := database.InitDB()
-	h := NewHandler(db)
-	r := gin.New()
-	r.GET("/unsubscribe", h.UnsubscribeGet)
-
-	w := httptest.NewRecorder()
-	req, _ := http.NewRequest(http.MethodGet, "/unsubscribe?email=test@example.com", nil)
-	r.ServeHTTP(w, req)
-
-	if w.Code != http.StatusInternalServerError {
-		t.Errorf("expected InternalServerError on captcha generator failure, got: %d", w.Code)
-	}
-}
-
-func TestUnsubscribePost_MissingCaptchaInSession(t *testing.T) {
-	_ = os.Setenv("DB_PATH", ":memory:")
-	defer func() { _ = os.Unsetenv("DB_PATH") }()
-
-	db, _ := database.InitDB()
-	gin.SetMode(gin.TestMode)
-	h := NewHandler(db)
-
-	r := gin.New()
-	store := cookie.NewStore([]byte("secret"))
-	r.Use(sessions.Sessions("mysession", store))
-
-	r.POST("/unsubscribe", func(c *gin.Context) {
-		session := sessions.Default(c)
-		session.Set("csrf_token", "valid-csrf")
-		session.Set("unsubscribe_email", "test@example.com")
-		_ = session.Save()
-		c.Next()
-	}, h.UnsubscribePost)
-
-	w := httptest.NewRecorder()
-	form := url.Values{}
-	form.Set("csrf_token", "valid-csrf")
-	form.Set("email", "test@example.com")
-	form.Set("answer", "15")
-	req, _ := http.NewRequest(http.MethodPost, "/unsubscribe", strings.NewReader(form.Encode()))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	r.ServeHTTP(w, req)
-
-	if w.Code != http.StatusUnauthorized {
-		t.Errorf("expected StatusUnauthorized (401), got: %d", w.Code)
-	}
-	if !strings.Contains(w.Body.String(), "Captcha answer not found in session") {
-		t.Errorf("expected captcha answer not found message, got: %s", w.Body.String())
-	}
-}
-
-func TestUnsubscribePost_CaptchaStringAndDBError(t *testing.T) {
+func TestUnsubscribePost_DBError(t *testing.T) {
 	originalSendEmail := sendUnsubscribeEmail
 	sendUnsubscribeEmail = func(email string) {}
 	defer func() { sendUnsubscribeEmail = originalSendEmail }()
 
+	t.Setenv("SESSION_SECRET", unsubTestSecret)
+	t.Setenv("UNSUBSCRIBE_SECRET", "")
+
 	_ = os.Setenv("DB_PATH", ":memory:")
 	defer func() { _ = os.Unsetenv("DB_PATH") }()
 
@@ -264,62 +196,29 @@ func TestUnsubscribePost_CaptchaStringAndDBError(t *testing.T) {
 	h := NewHandler(db)
 
 	r := gin.New()
-	store := cookie.NewStore([]byte("secret"))
-	r.Use(sessions.Sessions("mysession", store))
-
+	r.Use(sessions.Sessions("mysession", cookie.NewStore([]byte("secret"))))
 	r.POST("/unsubscribe", func(c *gin.Context) {
 		session := sessions.Default(c)
 		session.Set("csrf_token", "valid-csrf")
-		session.Set("unsubscribe_email", "test@example.com")
-		if c.Query("type") == "float" {
-			session.Set("captcha_answer", float64(15.0))
-		} else {
-			session.Set("captcha_answer", "15") // string answer
-		}
 		_ = session.Save()
 		c.Next()
 	}, h.UnsubscribePost)
 
-	// Test 1: string answer works
-	w1 := httptest.NewRecorder()
-	form1 := url.Values{}
-	form1.Set("csrf_token", "valid-csrf")
-	form1.Set("email", "test@example.com")
-	form1.Set("answer", "15")
-	req1, _ := http.NewRequest(http.MethodPost, "/unsubscribe", strings.NewReader(form1.Encode()))
-	req1.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	r.ServeHTTP(w1, req1)
-
-	if w1.Code != http.StatusOK {
-		t.Errorf("expected StatusOK (200), got: %d", w1.Code)
-	}
-
-	// Test 1.5: float64 answer works
-	database.GetDB().Create(&models.Subscriber{Email: "test@example.com"})
-	w15 := httptest.NewRecorder()
-	req15, _ := http.NewRequest(http.MethodPost, "/unsubscribe?type=float", strings.NewReader(form1.Encode()))
-	req15.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	r.ServeHTTP(w15, req15)
-
-	if w15.Code != http.StatusOK {
-		t.Errorf("expected StatusOK (200) on float type, got: %d", w15.Code)
-	}
-
-	// Test 2: Database delete failure
-	database.GetDB().Create(&models.Subscriber{Email: "test@example.com"})
 	_ = database.GetDB().Callback().Delete().Before("gorm:delete").Register("fail_subscriber_delete", func(d *gorm.DB) {
 		_ = d.AddError(fmt.Errorf("simulated subscriber delete error"))
 	})
-	w2 := httptest.NewRecorder()
-	req2, _ := http.NewRequest(http.MethodPost, "/unsubscribe", strings.NewReader(form1.Encode()))
-	req2.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	r.ServeHTTP(w2, req2)
 
-	if w2.Code != http.StatusInternalServerError {
-		t.Errorf("expected InternalServerError (500) on database delete error, got: %d", w2.Code)
+	form := url.Values{}
+	form.Set("csrf_token", "valid-csrf")
+	form.Set("email", "test@example.com")
+	form.Set("token", pkg.UnsubscribeToken(unsubTestSecret, "test@example.com"))
+	w := postUnsubscribe(r, "", form)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected InternalServerError (500) on database delete error, got: %d", w.Code)
 	}
-	if !strings.Contains(w2.Body.String(), "Failed to unsubscribe") {
-		t.Errorf("expected Failed to unsubscribe error message, got: %s", w2.Body.String())
+	if strings.Contains(w.Body.String(), "simulated") {
+		t.Errorf("database error details must not be exposed, got: %s", w.Body.String())
 	}
 }
 
@@ -335,88 +234,41 @@ func TestUnsubscribePost_EdgeCases(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	h := NewHandler(db)
 
-	r := gin.New()
-	store := cookie.NewStore([]byte("secret"))
-	r.Use(sessions.Sessions("mysession", store))
+	validToken := pkg.UnsubscribeToken(unsubTestSecret, "test@example.com")
 
 	tests := []struct {
-		name           string
-		setupSession   func(s sessions.Session)
-		csrfInput      string
-		answerInput    string
-		expectedStatus int
-		expectedBody   string
+		name     string
+		secret   string
+		email    string
+		token    string
+		wantCode int
 	}{
-		{
-			name: "Missing CSRF in Session",
-			setupSession: func(s sessions.Session) {
-				// No CSRF set
-			},
-			csrfInput:      "some-token",
-			expectedStatus: http.StatusForbidden,
-			expectedBody:   "Invalid CSRF token",
-		},
-		{
-			name: "Invalid CSRF Type in Session",
-			setupSession: func(s sessions.Session) {
-				s.Set("csrf_token", 123) // Should be string
-			},
-			csrfInput:      "some-token",
-			expectedStatus: http.StatusForbidden,
-			expectedBody:   "Invalid CSRF token",
-		},
-		{
-			name: "Unsupported Captcha Answer Type",
-			setupSession: func(s sessions.Session) {
-				s.Set("csrf_token", "valid-csrf")
-				s.Set("unsubscribe_email", "test@example.com")
-				s.Set("captcha_answer", true) // bool not supported
-			},
-			csrfInput:      "valid-csrf",
-			answerInput:    "1",
-			expectedStatus: http.StatusUnauthorized,
-			expectedBody:   "Invalid captcha answer",
-		},
-		{
-			name: "Non-numeric Captcha Answer String in Session",
-			setupSession: func(s sessions.Session) {
-				s.Set("csrf_token", "valid-csrf")
-				s.Set("unsubscribe_email", "test@example.com")
-				s.Set("captcha_answer", "abc") // invalid numeric string
-			},
-			csrfInput:      "valid-csrf",
-			answerInput:    "0",
-			expectedStatus: http.StatusUnauthorized,
-			expectedBody:   "Invalid captcha answer",
-		},
+		{"missing email", unsubTestSecret, "", validToken, http.StatusForbidden},
+		{"missing token", unsubTestSecret, "test@example.com", "", http.StatusForbidden},
+		{"no secret configured", "", "test@example.com", validToken, http.StatusForbidden},
+		{"valid", unsubTestSecret, "test@example.com", validToken, http.StatusOK},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			rPost := gin.New()
-			rPost.Use(sessions.Sessions("mysession", store))
-			rPost.POST("/unsubscribe", func(c *gin.Context) {
+			t.Setenv("SESSION_SECRET", tt.secret)
+			t.Setenv("UNSUBSCRIBE_SECRET", "")
+
+			r := gin.New()
+			r.Use(sessions.Sessions("mysession", cookie.NewStore([]byte("secret"))))
+			r.POST("/unsubscribe", func(c *gin.Context) {
 				session := sessions.Default(c)
-				if tt.setupSession != nil {
-					tt.setupSession(session)
-				}
+				session.Set("csrf_token", "valid-csrf")
 				_ = session.Save()
 				c.Next()
 			}, h.UnsubscribePost)
 
-			w := httptest.NewRecorder()
 			form := url.Values{}
-			form.Set("csrf_token", tt.csrfInput)
-			form.Set("answer", tt.answerInput)
-			req, _ := http.NewRequest(http.MethodPost, "/unsubscribe", strings.NewReader(form.Encode()))
-			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-			rPost.ServeHTTP(w, req)
-
-			if w.Code != tt.expectedStatus {
-				t.Errorf("expected status %d, got %d", tt.expectedStatus, w.Code)
-			}
-			if tt.expectedBody != "" && !strings.Contains(w.Body.String(), tt.expectedBody) {
-				t.Errorf("expected body to contain %q, got %q", tt.expectedBody, w.Body.String())
+			form.Set("csrf_token", "valid-csrf")
+			form.Set("email", tt.email)
+			form.Set("token", tt.token)
+			if w := postUnsubscribe(r, "", form); w.Code != tt.wantCode {
+				t.Errorf("expected %d, got %d (%s)", tt.wantCode, w.Code, w.Body.String())
 			}
 		})
 	}

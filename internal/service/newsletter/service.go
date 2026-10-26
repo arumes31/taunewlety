@@ -84,5 +84,5 @@ func (s *NewsletterService) GenerateNewsletterWithContext(ctx context.Context) (
 		})
 	}
 
-	return content.Subject, content.Body, nil
+	return content.Subject, content.Body + unsubscribeFooter, nil
 }
