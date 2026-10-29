@@ -202,6 +202,14 @@ func unmarshalHomeStatsRows(raw json.RawMessage) ([]homeStatsRow, error) {
 
 // --- Public API methods ---
 
+// maxWatchHistoryBatch caps how many watch-history lookups one batch may
+// trigger, and maxWatchHistoryWorkers how many run concurrently, so an
+// oversized upstream response cannot fan out into unbounded requests.
+const (
+	maxWatchHistoryBatch   = 100
+	maxWatchHistoryWorkers = 8
+)
+
 func (c *TautulliClient) GetWatchHistoryBatch(ratingKeys []string) (map[string]WatchInfo, error) {
 	results := make(map[string]WatchInfo)
 	if len(ratingKeys) == 0 {
@@ -214,25 +222,50 @@ func (c *TautulliClient) GetWatchHistoryBatch(ratingKeys []string) (map[string]W
 		err   error
 	}
 
-	ch := make(chan batchResult, len(ratingKeys))
-	for _, key := range ratingKeys {
-		go func(k string) {
-			count, err := c.GetWatchHistory(k)
-			ch <- batchResult{key: k, count: count, err: err}
-		}(key)
+	// Each key costs one HTTP request, so duplicates are dropped and the
+	// batch is capped before any work starts.
+	seen := make(map[string]bool, len(ratingKeys))
+	unique := make([]string, 0, len(ratingKeys))
+	for _, k := range ratingKeys {
+		if k == "" || seen[k] {
+			continue
+		}
+		seen[k] = true
+		unique = append(unique, k)
+		if len(unique) == maxWatchHistoryBatch {
+			break
+		}
 	}
+	ratingKeys = unique
+
+	// A fixed pool of workers bounds concurrent requests to Tautulli
+	// regardless of how many keys the batch holds.
+	jobs := make(chan string)
+	ch := make(chan batchResult, len(ratingKeys))
+	var wg sync.WaitGroup
+	for w := 0; w < min(maxWatchHistoryWorkers, len(ratingKeys)); w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for k := range jobs {
+				count, err := c.GetWatchHistory(k)
+				ch <- batchResult{key: k, count: count, err: err}
+			}
+		}()
+	}
+	for _, key := range ratingKeys {
+		jobs <- key
+	}
+	close(jobs)
+	wg.Wait()
+	close(ch)
 
 	var errCount int
-	var errMu sync.Mutex
-
-	for i := 0; i < len(ratingKeys); i++ {
-		res := <-ch
+	for res := range ch {
 		if res.err == nil {
 			results[res.key] = WatchInfo{WatchCount: res.count}
 		} else {
-			errMu.Lock()
 			errCount++
-			errMu.Unlock()
 			log.Printf("Warning: failed to get watch history for rating key %v: %v", res.key, c.redactErr(res.err))
 		}
 	}
@@ -263,6 +296,12 @@ func (c *TautulliClient) GetRecentlyAdded(count int) ([]RecentlyAddedItem, error
 		return nil, fmt.Errorf("missing recently_added field in Tautulli API response")
 	}
 
+	// Enforce the requested count locally: the response length is upstream
+	// data and drives follow-up requests per item.
+	if count >= 0 && len(data.RecentlyAdded) > count {
+		data.RecentlyAdded = data.RecentlyAdded[:count]
+	}
+
 	return data.RecentlyAdded, nil
 }
 
@@ -277,7 +316,7 @@ func (c *TautulliClient) GetWatchHistory(ratingKey string) (int, error) {
 	}
 
 	// The data field must be a JSON object for watch history.
-	if tautulliResp.Response.Data[0] != '{' {
+	if len(tautulliResp.Response.Data) == 0 || tautulliResp.Response.Data[0] != '{' {
 		return 0, fmt.Errorf("data field is not a map in watch history response")
 	}
 

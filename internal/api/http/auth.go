@@ -21,21 +21,38 @@ func (h *Handler) LoginGet(c *gin.Context) {
 	})
 }
 
+// maxLoginFormBytes bounds the login body; the form holds only a CSRF
+// token, a username and a password.
+const maxLoginFormBytes = 8 << 10
+
+// renderLoginThrottled answers a login attempt rejected by the rate limits.
+func renderLoginThrottled(c *gin.Context) {
+	token, err := generateAndStoreCSRF(sessions.Default(c))
+	if err != nil {
+		c.String(http.StatusInternalServerError, "Failed to generate CSRF token")
+		return
+	}
+	c.HTML(http.StatusTooManyRequests, "login.html", gin.H{
+		"error":     "Too many login attempts. Try again later.",
+		"csrfToken": token,
+	})
+}
+
 func (h *Handler) LoginPost(c *gin.Context) {
 	ip := c.ClientIP()
 
-	// Rate limit check: block if too many failed attempts from this IP, or
-	// while the account-wide backoff (independent of IP) is in effect.
+	// Cheap early rejection: too many failed attempts from this IP, or the
+	// account-wide backoff (independent of IP) is in effect.
 	if !loginLimiter.check(ip) || !loginBackoff.allowed() {
-		token, err := generateAndStoreCSRF(sessions.Default(c))
-		if err != nil {
-			c.String(http.StatusInternalServerError, "Failed to generate CSRF token")
-			return
-		}
-		c.HTML(http.StatusTooManyRequests, "login.html", gin.H{
-			"error":     "Too many login attempts. Try again later.",
-			"csrfToken": token,
-		})
+		renderLoginThrottled(c)
+		return
+	}
+
+	// Read the whole (bounded) form up front, so the admission decision
+	// below is made after any slow body upload rather than before it.
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxLoginFormBytes)
+	if err := c.Request.ParseForm(); err != nil {
+		c.String(http.StatusRequestEntityTooLarge, "Invalid login request")
 		return
 	}
 
@@ -78,10 +95,26 @@ func (h *Handler) LoginPost(c *gin.Context) {
 		return
 	}
 
+	// Atomically reserve a credential check under both limits. The early
+	// check above does not count requests already in flight, so without the
+	// reservation a burst of concurrent requests could all reach the
+	// comparison before any failure was recorded.
+	if !loginLimiter.reserve(ip) {
+		renderLoginThrottled(c)
+		return
+	}
+	if !loginBackoff.reserve() {
+		loginLimiter.release(ip, false)
+		renderLoginThrottled(c)
+		return
+	}
+
 	userMatch := subtle.ConstantTimeCompare([]byte(user), []byte(envUser)) == 1
 	passMatch := subtle.ConstantTimeCompare([]byte(pass), []byte(envPass)) == 1
 
 	if userMatch && passMatch {
+		loginLimiter.release(ip, false)
+		loginBackoff.release(false)
 		loginLimiter.reset(ip)
 		loginBackoff.reset()
 		if err := startAdminSession(session, user); err != nil {
@@ -94,8 +127,8 @@ func (h *Handler) LoginPost(c *gin.Context) {
 		}
 		c.Redirect(http.StatusFound, "/")
 	} else {
-		loginLimiter.recordFailure(ip)
-		loginBackoff.recordFailure()
+		loginLimiter.release(ip, true)
+		loginBackoff.release(true)
 		token, err := generateAndStoreCSRF(session)
 		if err != nil {
 			c.String(http.StatusInternalServerError, "Failed to generate CSRF token")

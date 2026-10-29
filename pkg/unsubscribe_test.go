@@ -25,7 +25,8 @@ func TestUnsubscribeToken(t *testing.T) {
 		want   bool
 	}{
 		{"valid token", secret, "user@example.com", token, true},
-		{"case and whitespace insensitive", secret, " User@Example.COM ", token, true},
+		{"domain case and whitespace insensitive", secret, " user@Example.COM ", token, true},
+		{"local part case sensitive", secret, "User@example.com", token, false},
 		{"other address", secret, "other@example.com", token, false},
 		{"other secret", "another-secret", "user@example.com", token, false},
 		{"tampered token", secret, "user@example.com", tampered, false},
@@ -59,5 +60,19 @@ func TestUnsubscribeSecret(t *testing.T) {
 	t.Setenv("UNSUBSCRIBE_SECRET", "dedicated")
 	if got := UnsubscribeSecret(); got != "dedicated" {
 		t.Errorf("expected UNSUBSCRIBE_SECRET, got %q", got)
+	}
+}
+
+func TestCanonicalEmail(t *testing.T) {
+	tests := map[string]string{
+		" Bob@Example.COM ": "Bob@example.com",
+		"bob@example.com":   "bob@example.com",
+		"a@b@Example.Com":   "a@b@example.com",
+		"no-at-sign":        "no-at-sign",
+	}
+	for in, want := range tests {
+		if got := CanonicalEmail(in); got != want {
+			t.Errorf("CanonicalEmail(%q) = %q, want %q", in, got, want)
+		}
 	}
 }

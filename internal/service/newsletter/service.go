@@ -47,25 +47,51 @@ func (s *NewsletterService) GenerateNewsletter() (string, string, error) {
 	return s.GenerateNewsletterWithContext(context.Background())
 }
 
-// GenerateNewsletterWithContext is the context-aware version of GenerateNewsletter.
+// GenerateNewsletterWithContext builds a newsletter for delivery and records
+// the selection (7-day blacklist and recommendation stats). Only call it when
+// the newsletter is actually being sent; use PreviewNewsletter otherwise.
 func (s *NewsletterService) GenerateNewsletterWithContext(ctx context.Context) (string, string, error) {
-	// 1. Get mixed pool of candidates
-	selection, err := s.MixRecommendations()
+	selection, content, err := s.draftNewsletter(ctx)
 	if err != nil {
 		return "", "", err
+	}
+	s.recordDelivery(selection)
+	return content.Subject, content.Body, nil
+}
+
+// PreviewNewsletter builds a newsletter without recording anything about the
+// selection, so viewing a preview (a GET that embedded resources can trigger
+// with the admin's cookie) never changes which items are recommended next.
+// The returned body has no unsubscribe footer; SendEmail adds a signed one
+// per recipient.
+func (s *NewsletterService) PreviewNewsletter(ctx context.Context) (string, string, error) {
+	_, content, err := s.draftNewsletter(ctx)
+	if err != nil {
+		return "", "", err
+	}
+	return content.Subject, content.Body, nil
+}
+
+// draftNewsletter selects candidates and generates the AI content.
+func (s *NewsletterService) draftNewsletter(ctx context.Context) ([]Candidate, *GeneratedContent, error) {
+	selection, err := s.MixRecommendations()
+	if err != nil {
+		return nil, nil, err
 	}
 
 	if len(selection) == 0 {
-		return "", "", ErrNoRecommendations
+		return nil, nil, ErrNoRecommendations
 	}
 
-	// 2. Generate content with AI
 	content, err := s.GenerateAIContent(ctx, selection)
 	if err != nil {
-		return "", "", err
+		return nil, nil, err
 	}
+	return selection, content, nil
+}
 
-	// 3. Post-generation: track stats and blacklist
+// recordDelivery blacklists the sent items for 7 days and tracks stats.
+func (s *NewsletterService) recordDelivery(selection []Candidate) {
 	for _, c := range selection {
 		ratingKey := fmt.Sprintf("%d", c.Item.RatingKey)
 		mediaType := c.Item.MediaType
@@ -83,6 +109,4 @@ func (s *NewsletterService) GenerateNewsletterWithContext(ctx context.Context) (
 			SentAt:  time.Now().Unix(),
 		})
 	}
-
-	return content.Subject, content.Body + unsubscribeFooter, nil
 }

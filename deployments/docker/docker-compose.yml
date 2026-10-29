@@ -22,9 +22,11 @@ services:
       - DB_PASSWORD=${DB_PASSWORD:?DB_PASSWORD is required}
       - DB_NAME=${DB_NAME:-taunewlety}
       # The bundled Postgres serves no TLS and is only reachable on this
-      # internal network. Set DB_SSLMODE=require (or stricter) in .env
-      # alongside DB_HOST when using an external database.
+      # internal network. Set DB_SSLMODE=verify-full in .env alongside
+      # DB_HOST when using an external database (plus DB_SSLROOTCERT, a
+      # container path, if its CA is not publicly trusted).
       - DB_SSLMODE=${DB_SSLMODE:-disable}
+      - DB_SSLROOTCERT=${DB_SSLROOTCERT:-}
       # Direct HTTPS: set both in .env (to container paths) and uncomment the
       # certificate mounts below.
       - TLS_CERT=${TLS_CERT:-}
