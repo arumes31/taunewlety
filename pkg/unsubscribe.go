@@ -31,7 +31,7 @@ func UnsubscribeToken(secret, email string) string {
 		return ""
 	}
 	mac := hmac.New(sha256.New, []byte(secret))
-	mac.Write([]byte(unsubscribeTokenLabel + normalizeUnsubscribeEmail(email)))
+	mac.Write([]byte(unsubscribeTokenLabel + CanonicalEmail(email)))
 	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 }
 
@@ -45,8 +45,16 @@ func VerifyUnsubscribeToken(secret, email, token string) bool {
 	return hmac.Equal([]byte(expected), []byte(token))
 }
 
-// normalizeUnsubscribeEmail makes the token independent of letter case and
-// surrounding whitespace, so a link still verifies if it is re-cased in transit.
-func normalizeUnsubscribeEmail(email string) string {
-	return strings.ToLower(strings.TrimSpace(email))
+// CanonicalEmail is the identity an unsubscribe token is bound to: the address
+// with surrounding whitespace removed and the domain lowercased. The local
+// part keeps its case because mailboxes may be case-sensitive (RFC 5321), so
+// Bob@example.com and bob@example.com are distinct subscribers and must not
+// share a token. Callers deleting a subscriber must match on this same form.
+func CanonicalEmail(email string) string {
+	email = strings.TrimSpace(email)
+	at := strings.LastIndex(email, "@")
+	if at < 0 {
+		return email
+	}
+	return email[:at+1] + strings.ToLower(email[at+1:])
 }

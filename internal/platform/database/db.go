@@ -46,15 +46,21 @@ var (
 			if port == "" {
 				port = "5432"
 			}
-			// sslmode: defaults to 'require' for security.
-			// For local development without SSL, set DB_SSLMODE=disable.
+			// sslmode defaults to 'verify-full': 'require' encrypts but does
+			// not authenticate the server, so an interceptor could impersonate
+			// it and collect the password. Weaker modes (require, disable) are
+			// an explicit DB_SSLMODE override. DB_SSLROOTCERT names the CA
+			// bundle when the server certificate is not publicly trusted.
 			sslmode := os.Getenv("DB_SSLMODE")
 			if sslmode == "" {
-				sslmode = "require"
+				sslmode = "verify-full"
 			}
 
 			dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=%s",
 				escapeDSNValue(host), escapeDSNValue(user), escapeDSNValue(password), escapeDSNValue(dbname), escapeDSNValue(port), escapeDSNValue(sslmode))
+			if rootCert := os.Getenv("DB_SSLROOTCERT"); rootCert != "" {
+				dsn += " sslrootcert=" + escapeDSNValue(rootCert)
+			}
 			return gorm.Open(postgres.Open(dsn), &gorm.Config{
 				SkipDefaultTransaction: true,
 				PrepareStmt:            true,

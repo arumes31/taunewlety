@@ -58,7 +58,7 @@ func TestNewsletterService_SendEmail(t *testing.T) {
 				if !strings.Contains(msgStr, "Subject: Test Subject") {
 					t.Errorf("message should contain subject")
 				}
-				wantURL := "http://localhost:8080/unsubscribe?email=recipient%40example.com&token=" +
+				wantURL := "http://localhost:8080/unsubscribe?email=recipient%40example.com&amp;token=" +
 					pkg.UnsubscribeToken("notifier-test-secret", "recipient@example.com")
 				if !strings.Contains(msgStr, wantURL) {
 					t.Errorf("message should contain signed unsubscribe URL %q", wantURL)

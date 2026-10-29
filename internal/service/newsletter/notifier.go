@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"log"
 	"mime"
 	"net"
@@ -29,11 +30,7 @@ func (s *NewsletterService) SendEmail(to string, subject string, body string) er
 		return fmt.Errorf("invalid recipient email: %w", err)
 	}
 
-	// The link carries an HMAC token bound to the address, so only someone
-	// holding the email can unsubscribe it.
-	token := pkg.UnsubscribeToken(pkg.UnsubscribeSecret(), toSanitized)
-	unsubURL := fmt.Sprintf("%s/unsubscribe?email=%s&token=%s", s.Config.AppBaseURL, url.QueryEscape(toSanitized), url.QueryEscape(token))
-	body = strings.ReplaceAll(body, "{{.UnsubscribeURL}}", unsubURL)
+	body = appendUnsubscribeFooter(body, s.unsubscribeURL(toSanitized))
 
 	auth := smtp.PlainAuth("", s.Config.SMTPUser, s.Config.SMTPPass, s.Config.SMTPHost)
 	encodedSubject := mime.QEncoding.Encode("utf-8", subjectSanitized)
@@ -62,31 +59,78 @@ func (s *NewsletterService) SendEmail(to string, subject string, body string) er
 	}
 }
 
-var smtpSendMail = smtp.SendMail
+// unsubscribeURL returns the signed, per-recipient unsubscribe link. The
+// HMAC token is bound to the address, so only someone holding the email can
+// unsubscribe it.
+func (s *NewsletterService) unsubscribeURL(to string) string {
+	token := pkg.UnsubscribeToken(pkg.UnsubscribeSecret(), to)
+	return fmt.Sprintf("%s/unsubscribe?email=%s&token=%s", s.Config.AppBaseURL, url.QueryEscape(to), url.QueryEscape(token))
+}
 
-// smtpSendMailTLS sends email using implicit TLS (port 465).
-var smtpSendMailTLS = func(addr string, auth smtp.Auth, from string, to []string, msg []byte) error {
-	host, _, _ := net.SplitHostPort(addr)
-	conn, err := tls.Dial("tcp", addr, &tls.Config{ServerName: host})
-	if err != nil {
-		return fmt.Errorf("tls dial failed: %w", err)
+// appendUnsubscribeFooter adds the application-owned unsubscribe footer to a
+// message body. The signed link is a bearer credential, so it is rendered only
+// here and never substituted into the body itself: a placeholder planted in
+// model-generated HTML (for example inside an image URL) stays inert instead
+// of leaking the recipient's token to a third-party host.
+func appendUnsubscribeFooter(body, unsubURL string) string {
+	footer := `<hr><p><small><a href="` + html.EscapeString(unsubURL) + `">Unsubscribe</a></small></p>`
+	if i := strings.LastIndex(strings.ToLower(body), "</body>"); i >= 0 {
+		return body[:i] + footer + body[i:]
 	}
-	defer func() { _ = conn.Close() }()
+	return body + footer
+}
 
+// smtpTimeout bounds the SMTP dial so an unreachable relay cannot stall a
+// send indefinitely.
+const smtpTimeout = 30 * time.Second
+
+// smtpSendMail sends email over a connection upgraded with mandatory STARTTLS
+// (usually port 587). Unlike net/smtp.SendMail, which silently continues in
+// plain text when the server does not advertise STARTTLS (or when EHLO fails
+// and it falls back to HELO), this aborts unless a certificate-verified TLS
+// session is established before authentication and the message are sent.
+var smtpSendMail = func(addr string, auth smtp.Auth, from string, to []string, msg []byte) error {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return fmt.Errorf("invalid smtp address: %w", err)
+	}
+	conn, err := net.DialTimeout("tcp", addr, smtpTimeout)
+	if err != nil {
+		return fmt.Errorf("smtp dial failed: %w", err)
+	}
 	c, err := smtp.NewClient(conn, host)
 	if err != nil {
+		_ = conn.Close()
 		return fmt.Errorf("smtp client creation failed: %w", err)
 	}
 	defer func() { _ = c.Close() }()
 
-	if err = c.Auth(auth); err != nil {
-		return fmt.Errorf("smtp auth failed: %w", err)
+	if err = c.Hello("localhost"); err != nil {
+		return fmt.Errorf("smtp hello failed: %w", err)
 	}
-	if err = c.Mail(from); err != nil {
+	if ok, _ := c.Extension("STARTTLS"); !ok {
+		return errors.New("smtp server does not support STARTTLS; refusing to send in plain text")
+	}
+	if err = c.StartTLS(&tls.Config{ServerName: host, MinVersion: tls.VersionTLS12}); err != nil {
+		return fmt.Errorf("smtp starttls failed: %w", err)
+	}
+	if auth != nil {
+		if ok, _ := c.Extension("AUTH"); ok {
+			if err = c.Auth(auth); err != nil {
+				return fmt.Errorf("smtp auth failed: %w", err)
+			}
+		}
+	}
+	return smtpDeliver(c, from, to, msg)
+}
+
+// smtpDeliver runs the envelope and DATA phase on an established client.
+func smtpDeliver(c *smtp.Client, from string, to []string, msg []byte) error {
+	if err := c.Mail(from); err != nil {
 		return fmt.Errorf("smtp mail from failed: %w", err)
 	}
 	for _, rcpt := range to {
-		if err = c.Rcpt(rcpt); err != nil {
+		if err := c.Rcpt(rcpt); err != nil {
 			return fmt.Errorf("smtp rcpt to failed: %w", err)
 		}
 	}
@@ -103,6 +147,27 @@ var smtpSendMailTLS = func(addr string, auth smtp.Auth, from string, to []string
 	return c.Quit()
 }
 
+// smtpSendMailTLS sends email using implicit TLS (port 465).
+var smtpSendMailTLS = func(addr string, auth smtp.Auth, from string, to []string, msg []byte) error {
+	host, _, _ := net.SplitHostPort(addr)
+	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: smtpTimeout}, "tcp", addr, &tls.Config{ServerName: host, MinVersion: tls.VersionTLS12})
+	if err != nil {
+		return fmt.Errorf("tls dial failed: %w", err)
+	}
+	defer func() { _ = conn.Close() }()
+
+	c, err := smtp.NewClient(conn, host)
+	if err != nil {
+		return fmt.Errorf("smtp client creation failed: %w", err)
+	}
+	defer func() { _ = c.Close() }()
+
+	if err = c.Auth(auth); err != nil {
+		return fmt.Errorf("smtp auth failed: %w", err)
+	}
+	return smtpDeliver(c, from, to, msg)
+}
+
 // smtpSendMailNoAuth sends email without authentication or encryption.
 // This should only be used for local testing or trusted internal networks.
 var smtpSendMailNoAuth = func(addr string, from string, to []string, msg []byte) error {
@@ -112,25 +177,7 @@ var smtpSendMailNoAuth = func(addr string, from string, to []string, msg []byte)
 	}
 	defer func() { _ = c.Close() }()
 
-	if err = c.Mail(from); err != nil {
-		return fmt.Errorf("smtp mail from failed: %w", err)
-	}
-	for _, rcpt := range to {
-		if err = c.Rcpt(rcpt); err != nil {
-			return fmt.Errorf("smtp rcpt to failed: %w", err)
-		}
-	}
-	w, err := c.Data()
-	if err != nil {
-		return fmt.Errorf("smtp data failed: %w", err)
-	}
-	if _, err = w.Write(msg); err != nil {
-		return fmt.Errorf("smtp write failed: %w", err)
-	}
-	if err = w.Close(); err != nil {
-		return fmt.Errorf("smtp close data failed: %w", err)
-	}
-	return c.Quit()
+	return smtpDeliver(c, from, to, msg)
 }
 
 // notifyHTTPClient posts webhook notifications. http.DefaultClient has no

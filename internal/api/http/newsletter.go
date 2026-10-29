@@ -13,13 +13,15 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// NewsletterPreview renders a draft newsletter. It is read-only: the
+// blacklist and recommendation stats are only updated by an actual send.
 func (h *Handler) NewsletterPreview(c *gin.Context) {
 	svc := h.newNewsletterService()
 	if svc == nil {
 		c.String(http.StatusBadRequest, "Configure settings first")
 		return
 	}
-	subject, body, err := svc.GenerateNewsletterWithContext(c.Request.Context())
+	subject, body, err := svc.PreviewNewsletter(c.Request.Context())
 	if err != nil {
 		if errors.Is(err, newsletter.ErrNoRecommendations) {
 			c.String(http.StatusUnprocessableEntity, "No recommendations available. Check your Tautulli connection and settings.")

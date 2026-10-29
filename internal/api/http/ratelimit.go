@@ -10,6 +10,7 @@ import (
 
 type loginAttempt struct {
 	count    int
+	inFlight int // credential checks admitted by reserve but not yet released
 	lastTime time.Time
 }
 
@@ -38,7 +39,7 @@ func (l *loginRateLimiter) sweep() {
 	defer l.mu.Unlock()
 
 	for ip, attempt := range l.attempts {
-		if time.Since(attempt.lastTime) > l.window {
+		if attempt.inFlight == 0 && time.Since(attempt.lastTime) > l.window {
 			delete(l.attempts, ip)
 		}
 	}
@@ -64,12 +65,59 @@ func (l *loginRateLimiter) check(ip string) bool {
 	}
 
 	// Reset if window has passed
-	if time.Since(attempt.lastTime) > l.window {
+	if attempt.inFlight == 0 && time.Since(attempt.lastTime) > l.window {
 		delete(l.attempts, ip)
 		return true
 	}
 
-	return attempt.count < l.maxAttempts
+	return attempt.count+attempt.inFlight < l.maxAttempts
+}
+
+// reserve atomically admits one credential check for ip. In-flight checks
+// count against the limit, so concurrent requests cannot all pass admission
+// before any of their failures is recorded. Every successful reserve must be
+// followed by exactly one release.
+func (l *loginRateLimiter) reserve(ip string) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	attempt, exists := l.attempts[ip]
+	if !exists {
+		attempt = &loginAttempt{lastTime: time.Now()}
+		l.attempts[ip] = attempt
+	} else if attempt.inFlight == 0 && time.Since(attempt.lastTime) > l.window {
+		attempt.count = 0
+	}
+
+	if attempt.count+attempt.inFlight >= l.maxAttempts {
+		return false
+	}
+	attempt.inFlight++
+	return true
+}
+
+// release completes a reservation, counting it as a failure when failed.
+func (l *loginRateLimiter) release(ip string, failed bool) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	attempt, exists := l.attempts[ip]
+	if !exists {
+		// A concurrent successful login reset the entry.
+		if !failed {
+			return
+		}
+		attempt = &loginAttempt{}
+		l.attempts[ip] = attempt
+	} else if attempt.inFlight > 0 {
+		attempt.inFlight--
+	}
+	if failed {
+		attempt.count++
+		attempt.lastTime = time.Now()
+	} else if attempt.count == 0 && attempt.inFlight == 0 {
+		delete(l.attempts, ip)
+	}
 }
 
 func (l *loginRateLimiter) recordFailure(ip string) {
@@ -115,6 +163,7 @@ func LoginRateLimit() gin.HandlerFunc {
 type accountBackoff struct {
 	mu        sync.Mutex
 	failures  int
+	inFlight  int // credential checks admitted by reserve but not yet released
 	lastFail  time.Time
 	until     time.Time
 	threshold int
@@ -135,12 +184,52 @@ func (b *accountBackoff) allowed() bool {
 	return !time.Now().Before(b.until)
 }
 
+// reserve atomically admits one credential check. In-flight checks count
+// toward the threshold, and once it is reached only one check may be in
+// flight at a time, so a burst of concurrent requests cannot all slip past
+// the backoff before the first failure sets it. Every successful reserve must
+// be followed by exactly one release.
+func (b *accountBackoff) reserve() bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	now := time.Now()
+	if now.Before(b.until) {
+		return false
+	}
+	failures := b.failures
+	if now.Sub(b.lastFail) > b.window {
+		failures = 0
+	}
+	if b.inFlight > 0 && failures+b.inFlight >= b.threshold {
+		return false
+	}
+	b.inFlight++
+	return true
+}
+
+// release completes a reservation, counting it as a failure when failed.
+func (b *accountBackoff) release(failed bool) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	if b.inFlight > 0 {
+		b.inFlight--
+	}
+	if failed {
+		b.recordFailureLocked()
+	}
+}
+
 // recordFailure counts a failed login. Past the threshold, each further
 // failure doubles the wait before the next attempt, up to maxDelay.
 func (b *accountBackoff) recordFailure() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	b.recordFailureLocked()
+}
 
+func (b *accountBackoff) recordFailureLocked() {
 	now := time.Now()
 	if now.Sub(b.lastFail) > b.window {
 		b.failures = 0

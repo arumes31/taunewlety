@@ -10,11 +10,6 @@ import (
 	"unicode"
 )
 
-// unsubscribeFooter is appended to every newsletter by the application
-// rather than requested from the LLM, so the link cannot be altered by the
-// model or by prompt injection through media metadata.
-const unsubscribeFooter = `<hr><p><small><a href="{{.UnsubscribeURL}}">Unsubscribe</a></small></p>`
-
 // maxPromptFieldLen caps how much of a single metadata field reaches the
 // prompt.
 const maxPromptFieldLen = 200

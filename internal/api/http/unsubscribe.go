@@ -104,10 +104,24 @@ func (h *Handler) UnsubscribePost(c *gin.Context) {
 	// Hard-delete so the unique email index is freed and the user can
 	// re-subscribe later (a soft delete would leave the row in place and
 	// cause a UNIQUE constraint failure on re-subscription).
+	//
+	// The token is bound to pkg.CanonicalEmail, so the record removed must be
+	// the one with that exact canonical identity — never a differently cased
+	// mailbox that merely compares equal case-insensitively.
 	var subscriber models.Subscriber
-	err := h.DB.Unscoped().Where("email = ?", email).Limit(1).Find(&subscriber).Error
-	if err == nil && subscriber.ID != 0 {
-		err = h.DB.Unscoped().Delete(&subscriber).Error
+	var candidates []models.Subscriber
+	canonical := pkg.CanonicalEmail(email)
+	err := h.DB.Unscoped().Where("LOWER(email) = LOWER(?)", canonical).Find(&candidates).Error
+	if err == nil {
+		for _, cand := range candidates {
+			if pkg.CanonicalEmail(cand.Email) == canonical {
+				subscriber = cand
+				break
+			}
+		}
+		if subscriber.ID != 0 {
+			err = h.DB.Unscoped().Delete(&subscriber).Error
+		}
 	}
 	if err != nil {
 		log.Printf("Unsubscribe: failed to delete subscriber: %v", err)
@@ -142,14 +156,11 @@ func sendUnsubscribeConfirmationEmail(email string) {
 		return
 	}
 
-	// The unsubscribe link is rendered by the shared mailer, which replaces
-	// this placeholder with a per-recipient URL.
+	// The shared mailer appends the signed, per-recipient unsubscribe footer.
 	body := "<html><body><p>Hello,</p>" +
 		"<p>You have been successfully unsubscribed from the TauNewlety newsletter. " +
 		"If you did not request this, you can re-subscribe through the application.</p>" +
 		"<p>If this was not you, please contact the server administrator.</p>" +
-		"<hr><p><small>Manage your subscription: " +
-		"<a href=\"{{.UnsubscribeURL}}\">{{.UnsubscribeURL}}</a></small></p>" +
 		"</body></html>"
 
 	svc := newsletter.NewNewsletterService(database.GetDB(), config)
