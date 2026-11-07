@@ -1,4 +1,4 @@
-# 🎬 TauNewlety v0.1
+# 🎬 TauNewlety
 > **The Ultimate AI-Powered Plex Media Server Companion**
 
 [![Go Version](https://img.shields.io/github/go-mod/go-version/arumes31/taunewlety?color=00ADD8&logo=go)](https://go.dev/)
@@ -55,7 +55,9 @@ graph TD
 
 ### 🖥️ Modern Web Management
 - **Full Settings Dashboard**: Configure Plex, Tautulli, SMTP, and AI settings directly in the browser.
-- **Subscriber Management**: Add, remove, and monitor email subscribers.
+- **Subscriber Management**: Add, remove, import/export subscriber lists (CSV/JSON), and monitor subscribers.
+- **Multi-Channel Alerts**: Receive newsletter delivery status and errors via Email, Discord webhooks, or Telegram bots.
+- **Blacklist & Filtering Controls**: Blacklist specific titles, series, or users to customize recommendations.
 - **System Stats**: Real-time tracking of AI token usage and delivery history.
 - **Live Logs**: Transparent view of internal system events and LLM generation.
 - **Newsletter Preview**: See exactly what your users will receive before sending.
@@ -82,11 +84,19 @@ Create a `.env` file in the project root:
 ```bash
 cp .env.example .env
 ```
-Set the following mandatory variables:
+Set the following core variables:
 - `APP_USER`: Your dashboard username.
 - `APP_PASS`: Your dashboard password.
-- `SESSION_SECRET`: A long random string.
-- `DB_USER`, `DB_PASSWORD`, `DB_NAME`: Credentials for the PostgreSQL container.
+- `SESSION_SECRET`: A long random string for session authentication.
+- `PORT`: Server listen port (default `8080`).
+- `NOTIFY_EMAIL`: Admin destination email address for delivery reports and error alerts.
+
+Database settings (PostgreSQL or SQLite):
+- `DB_TYPE`: `postgres` (default under Docker Compose) or `sqlite`.
+- `DB_PATH`: SQLite database file path when using SQLite (e.g., `taunewlety.db` or `/data/taunewlety.db`).
+- `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`: Connection parameters for PostgreSQL (defaults to port `5432`).
+- `DB_SSLMODE`: SSL mode for PostgreSQL (`verify-full`, `require`, or `disable`).
+- `DB_SSLROOTCERT`: Optional path to custom root CA certificate bundle for PostgreSQL.
 
 Optional security settings:
 - `TRUSTED_PROXIES`: Comma-separated IPs/CIDRs of your reverse proxy. Without it every client appears to come from the proxy's IP, so the per-IP login rate limit is shared by everyone.
@@ -227,7 +237,7 @@ Following Go best practices:
 ---
 
 ## 🤝 Contributing
-Contributions are welcome! Please check the `v2_test` branch for the latest work. Ensure all new code includes unit tests (aiming for 100% coverage).
+Contributions are welcome! Please create a feature branch off `main` and open a Pull Request. Ensure all new code includes unit tests.
 
 ---
 
