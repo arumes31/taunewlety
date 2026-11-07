@@ -27,8 +27,13 @@ dist/
 .qodo/
 source1/
 source2/
-app/
+/app/
 temp/
 graphify-out/
 
 .claudeignore
+
+docs/
+.stfolder/
+.stignore
+.kimi-code/
