@@ -161,6 +161,40 @@ func TestSettingsPost_PreservesSecretsOnBlank(t *testing.T) {
 	})
 }
 
+// TestSettingsPost_ClearDiscordWebhook verifies the explicit remove checkbox
+// clears the stored webhook, unlike a blank (unchanged) submission.
+func TestSettingsPost_ClearDiscordWebhook(t *testing.T) {
+	_ = os.Setenv("DB_PATH", ":memory:")
+	defer func() { _ = os.Unsetenv("DB_PATH") }()
+	gin.SetMode(gin.TestMode)
+
+	db, err := database.InitDB()
+	if err != nil {
+		t.Fatalf("failed to init DB: %v", err)
+	}
+	h := NewHandler(db)
+	config, err := database.GetConfig()
+	if err != nil {
+		t.Fatalf("GetConfig failed: %v", err)
+	}
+	config.DiscordWebhook = "https://discord.example/api/webhooks/1/stored"
+	if err := database.SaveConfig(config); err != nil {
+		t.Fatalf("SaveConfig failed: %v", err)
+	}
+
+	w := postSettings(t, h, settingsForm(map[string]string{"clear_discord_webhook": "true"}))
+	if w.Code != http.StatusFound {
+		t.Fatalf("expected redirect after save, got %d: %s", w.Code, w.Body.String())
+	}
+	saved, err := database.GetConfig()
+	if err != nil {
+		t.Fatalf("GetConfig failed: %v", err)
+	}
+	if saved.DiscordWebhook != "" {
+		t.Errorf("DiscordWebhook = %q after remove, want empty", saved.DiscordWebhook)
+	}
+}
+
 // TestDashboardGet_SecretsNotRendered verifies the dashboard never echoes a
 // stored secret back into the HTML.
 func TestDashboardGet_SecretsNotRendered(t *testing.T) {
