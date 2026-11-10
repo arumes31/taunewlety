@@ -4,8 +4,20 @@ on:
   push:
     branches: [ "v2_test", "main" ]
     tags: [ "v*" ]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - 'LICENSE'
+      - '.gitignore'
+      - '.gitattributes'
   pull_request:
     branches: [ "main" ]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - 'LICENSE'
+      - '.gitignore'
+      - '.gitattributes'
 
 env:
   REGISTRY: ghcr.io
@@ -21,9 +33,11 @@ concurrency:
 jobs:
   image-security:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       matrix:
-        platform: [linux/amd64, linux/arm64]
+        # arm64 is emulated under QEMU (~9 min); scan it only on pushes that publish multi-arch images.
+        platform: ${{ github.event_name == 'pull_request' && fromJSON('["linux/amd64"]') || fromJSON('["linux/amd64", "linux/arm64"]') }}
     permissions:
       contents: read
     steps:
@@ -40,6 +54,8 @@ jobs:
           platforms: ${{ matrix.platform }}
           load: true
           tags: taunewlety-audit:local
+          # Read-only reuse of the multi-arch layer cache written by build-and-push.
+          cache-from: type=gha
       - name: Scan the candidate image
         uses: aquasecurity/trivy-action@8f28faec26515256b6d22074d1d2a8986f4cbd87 # master
         with:
@@ -54,6 +70,7 @@ jobs:
     if: github.event_name != 'pull_request'
     needs: [image-security, go-lint, go-security]
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     permissions:
       contents: read
       packages: write
@@ -82,10 +99,10 @@ jobs:
         id: version
         shell: bash
         run: |
-          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            echo "VERSION=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
           else
-            echo "VERSION=v0.1-$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+            echo "VERSION=v0.1-$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Extract OCI image labels
@@ -118,6 +135,7 @@ jobs:
 
   go-lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
 
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -134,6 +152,7 @@ jobs:
 
   go-security:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
