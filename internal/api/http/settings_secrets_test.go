@@ -91,6 +91,7 @@ func TestSettingsPost_PreservesSecretsOnBlank(t *testing.T) {
 	config.PlexToken = "stored-plex-token"
 	config.SMTPPass = "stored-smtp-pass"
 	config.TelegramBotTok = "stored-telegram-token"
+	config.DiscordWebhook = "https://discord.example/api/webhooks/1/stored"
 	if err := database.SaveConfig(config); err != nil {
 		t.Fatalf("SaveConfig failed: %v", err)
 	}
@@ -110,12 +111,14 @@ func TestSettingsPost_PreservesSecretsOnBlank(t *testing.T) {
 			"PlexToken":      saved.PlexToken,
 			"SMTPPass":       saved.SMTPPass,
 			"TelegramBotTok": saved.TelegramBotTok,
+			"DiscordWebhook": saved.DiscordWebhook,
 		}
 		wants := map[string]string{
 			"TautulliAPIKey": "stored-tautulli-key",
 			"PlexToken":      "stored-plex-token",
 			"SMTPPass":       "stored-smtp-pass",
 			"TelegramBotTok": "stored-telegram-token",
+			"DiscordWebhook": "https://discord.example/api/webhooks/1/stored",
 		}
 		for field, got := range checks {
 			if got != wants[field] {
@@ -132,6 +135,7 @@ func TestSettingsPost_PreservesSecretsOnBlank(t *testing.T) {
 		w := postSettings(t, h, settingsForm(map[string]string{
 			"smtp_pass":        "new-smtp-pass",
 			"tautulli_api_key": "new-tautulli-key",
+			"discord_webhook":  "https://discord.example/api/webhooks/2/new",
 		}))
 		if w.Code != http.StatusFound {
 			t.Fatalf("expected redirect after save, got %d: %s", w.Code, w.Body.String())
@@ -146,6 +150,9 @@ func TestSettingsPost_PreservesSecretsOnBlank(t *testing.T) {
 		}
 		if saved.TautulliAPIKey != "new-tautulli-key" {
 			t.Errorf("TautulliAPIKey = %q, want %q", saved.TautulliAPIKey, "new-tautulli-key")
+		}
+		if saved.DiscordWebhook != "https://discord.example/api/webhooks/2/new" {
+			t.Errorf("DiscordWebhook = %q, want the new URL", saved.DiscordWebhook)
 		}
 		// Untouched secrets survive.
 		if saved.PlexToken != "stored-plex-token" {
@@ -175,6 +182,7 @@ func TestDashboardGet_SecretsNotRendered(t *testing.T) {
 	config.PlexToken = "SECRET-PLEX-TOKEN"
 	config.SMTPPass = "SECRET-SMTP-PASS"
 	config.TelegramBotTok = "SECRET-TELEGRAM-TOKEN"
+	config.DiscordWebhook = "https://discord.example/api/webhooks/1/SECRET-DISCORD-HOOK"
 	if err := database.SaveConfig(config); err != nil {
 		t.Fatalf("SaveConfig failed: %v", err)
 	}
@@ -193,7 +201,7 @@ func TestDashboardGet_SecretsNotRendered(t *testing.T) {
 	}
 	body := w.Body.String()
 	for _, secret := range []string{
-		"SECRET-TAUTULLI-KEY", "SECRET-PLEX-TOKEN", "SECRET-SMTP-PASS", "SECRET-TELEGRAM-TOKEN",
+		"SECRET-TAUTULLI-KEY", "SECRET-PLEX-TOKEN", "SECRET-SMTP-PASS", "SECRET-TELEGRAM-TOKEN", "SECRET-DISCORD-HOOK",
 	} {
 		if strings.Contains(body, secret) {
 			t.Errorf("dashboard rendered the stored secret %q", secret)

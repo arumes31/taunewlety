@@ -173,7 +173,6 @@ func (h *Handler) SettingsPost(c *gin.Context) {
 	config.SMTPSender = dto.SMTPSender
 	config.SMTPEncryption = dto.SMTPEncryption
 	config.AppBaseURL = dto.AppBaseURL
-	config.DiscordWebhook = dto.DiscordWebhook
 	config.TelegramChatID = dto.TelegramChatID
 	config.NewsletterTime = dto.NewsletterTime
 	config.RecCount = dto.RecCount
@@ -189,6 +188,9 @@ func (h *Handler) SettingsPost(c *gin.Context) {
 	}
 	if dto.SMTPPass != "" {
 		config.SMTPPass = dto.SMTPPass
+	}
+	if dto.DiscordWebhook != "" {
+		config.DiscordWebhook = dto.DiscordWebhook
 	}
 	if dto.TelegramBotTok != "" {
 		config.TelegramBotTok = dto.TelegramBotTok
