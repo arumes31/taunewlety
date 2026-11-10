@@ -53,6 +53,9 @@ func (a *App) Run(ctx context.Context) error {
 		a.logger.Error("APP_USER and APP_PASS environment variables are required but were not set")
 		return errors.New("APP_USER and APP_PASS environment variables are required")
 	}
+	if !models.EncryptionEnabled() {
+		a.logger.Warn("CONFIG_ENCRYPTION_KEY is not set: integration secrets (API keys, tokens, SMTP password, Discord webhook) are stored in plaintext in the database")
+	}
 	db, err := database.InitDB()
 	if err != nil {
 		a.logger.Error("Failed to initialize database", zap.Error(err))

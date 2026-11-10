@@ -246,7 +246,7 @@ func (s *NewsletterService) SendNotifications(subject string, body string) error
 		} else {
 			resp, err := discordHTTPPost(s.Config.DiscordWebhook, "application/json", bytes.NewReader(jsonData))
 			if err != nil {
-				log.Printf("Failed to send Discord notification: %v", err)
+				log.Printf("Failed to send Discord notification: %v", redactSecret(err, s.Config.DiscordWebhook))
 			} else {
 				if !isSuccessStatus(resp.StatusCode) {
 					log.Printf("Failed to send Discord notification: webhook returned status %d", resp.StatusCode)

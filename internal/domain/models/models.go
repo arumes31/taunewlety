@@ -20,7 +20,7 @@ type Config struct {
 	RecCount       int    `json:"rec_count"`
 	Language       string `json:"language"`
 	AppBaseURL     string `json:"app_base_url"` // For unsubscribe links
-	DiscordWebhook string `json:"discord_webhook"`
+	DiscordWebhook string `json:"discord_webhook" gorm:"serializer:encrypted"`
 	TelegramBotTok string `json:"telegram_bot_token" gorm:"serializer:encrypted"`
 	TelegramChatID string `json:"telegram_chat_id"`
 }

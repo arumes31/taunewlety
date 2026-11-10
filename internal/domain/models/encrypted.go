@@ -45,6 +45,12 @@ func encryptionKey() []byte {
 	return key[:]
 }
 
+// EncryptionEnabled reports whether CONFIG_ENCRYPTION_KEY is set, i.e.
+// whether integration secrets are encrypted at rest.
+func EncryptionEnabled() bool {
+	return encryptionKey() != nil
+}
+
 func newGCM(key []byte) (cipher.AEAD, error) {
 	block, err := aes.NewCipher(key)
 	if err != nil {

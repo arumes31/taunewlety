@@ -40,6 +40,7 @@ type EditableConfigDTO struct {
 	SMTPEncryption string `form:"smtp_encryption" binding:"omitempty,oneof=starttls tls none"`
 	AppBaseURL     string `form:"app_base_url" binding:"required,url"`
 	DiscordWebhook string `form:"discord_webhook" binding:"omitempty,url"`
+	ClearDiscord   bool   `form:"clear_discord_webhook"`
 	TelegramBotTok string `form:"telegram_bot_token" binding:"omitempty"`
 	TelegramChatID string `form:"telegram_chat_id" binding:"omitempty"`
 	NewsletterTime string `form:"newsletter_time" binding:"required"`
@@ -173,7 +174,6 @@ func (h *Handler) SettingsPost(c *gin.Context) {
 	config.SMTPSender = dto.SMTPSender
 	config.SMTPEncryption = dto.SMTPEncryption
 	config.AppBaseURL = dto.AppBaseURL
-	config.DiscordWebhook = dto.DiscordWebhook
 	config.TelegramChatID = dto.TelegramChatID
 	config.NewsletterTime = dto.NewsletterTime
 	config.RecCount = dto.RecCount
@@ -189,6 +189,12 @@ func (h *Handler) SettingsPost(c *gin.Context) {
 	}
 	if dto.SMTPPass != "" {
 		config.SMTPPass = dto.SMTPPass
+	}
+	// Blank keeps the stored webhook; the explicit checkbox removes it.
+	if dto.ClearDiscord {
+		config.DiscordWebhook = ""
+	} else if dto.DiscordWebhook != "" {
+		config.DiscordWebhook = dto.DiscordWebhook
 	}
 	if dto.TelegramBotTok != "" {
 		config.TelegramBotTok = dto.TelegramBotTok

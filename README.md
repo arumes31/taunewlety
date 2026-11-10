@@ -103,7 +103,7 @@ Optional security settings:
 - `COOKIE_SECURE`: The session cookie is `Secure` by default. Set `false` only for local testing over plain HTTP.
 - `SESSION_MAX_AGE`: Admin session lifetime as a Go duration (default `12h`). Sessions are also tracked server-side, so logout revokes them; restarting the app logs everyone out.
 - `UNSUBSCRIBE_SECRET`: Key for signing unsubscribe links (defaults to `SESSION_SECRET`). Set it if you want to rotate `SESSION_SECRET` without invalidating links in newsletters already sent.
-- `CONFIG_ENCRYPTION_KEY`: When set, the Tautulli API key, Plex token, SMTP password and Telegram bot token are encrypted (AES-256-GCM) in the database. Existing plaintext values are encrypted the next time settings are saved. If the key is lost, re-enter those secrets.
+- `CONFIG_ENCRYPTION_KEY`: When set, the Tautulli API key, Plex token, SMTP password, Discord webhook URL and Telegram bot token are encrypted (AES-256-GCM) in the database. Existing plaintext values are encrypted the next time settings are saved. If the key is lost, re-enter those secrets. Without the key these secrets are stored in plaintext and a warning is logged at startup.
 
 ### 3. Deploy with Docker Compose
 Run the stack in the background:
