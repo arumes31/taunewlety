@@ -4,6 +4,13 @@ on:
   push:
     branches:
       - main
+    # Match CI/CD: a docs-only commit gets no image build, so it must not get a tag either.
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - 'LICENSE'
+      - '.gitignore'
+      - '.gitattributes'
 
 permissions:
   contents: read
@@ -15,6 +22,7 @@ concurrency:
 jobs:
   tag:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: write
     steps:
