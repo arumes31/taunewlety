@@ -20,7 +20,7 @@ FROM alpine:3.24@sha256:71e9b7bae160ba167fa17414401b94cbcdaf3c32feeab9298bd794a2
 
 WORKDIR /app
 
-RUN apk upgrade --no-cache && apk add --no-cache wget \
+RUN apk upgrade --no-cache && apk add --no-cache wget 'libcrypto3>=3.5.9-r1' 'libssl3>=3.5.9-r1' 'zlib>=1.4-r0' \
   && adduser -D -H -u 10001 app \
   && mkdir -p /data && chown app:app /data
 
